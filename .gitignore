@@ -1,0 +1,9 @@
+.DS_Store
+/.build/
+/DerivedData/
+/*.xcodeproj/
+/*.xcworkspace/
+*.xcuserstate
+*.swiftpm/
+OpenLaunch.app/
+*.dSYM

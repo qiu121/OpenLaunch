@@ -1,0 +1,45 @@
+import XCTest
+@testable import OpenLaunchCore
+
+final class AppSorterTests: XCTestCase {
+    func testDefaultSettingsSortByAddedDateOldestFirst() {
+        let oldDate = Date(timeIntervalSince1970: 100)
+        let newDate = Date(timeIntervalSince1970: 300)
+        let middleDate = Date(timeIntervalSince1970: 200)
+
+        let apps = [
+            LaunchableApp(bundleIdentifier: "com.example.old", path: "/Applications/Old.app", displayName: "Old", addedDate: oldDate),
+            LaunchableApp(bundleIdentifier: "com.example.new", path: "/Applications/New.app", displayName: "New", addedDate: newDate),
+            LaunchableApp(bundleIdentifier: "com.example.middle", path: "/Applications/Middle.app", displayName: "Middle", addedDate: middleDate)
+        ]
+
+        let sorted = AppSorter.sorted(apps, using: OpenLaunchSettings.default)
+
+        XCTAssertEqual(sorted.map(\.displayName), ["Old", "Middle", "New"])
+    }
+
+    func testNameSortUsesLocalizedAscendingOrder() {
+        let apps = [
+            LaunchableApp(bundleIdentifier: "com.example.safari", path: "/Applications/Safari.app", displayName: "Safari", addedDate: nil),
+            LaunchableApp(bundleIdentifier: "com.example.arc", path: "/Applications/Arc.app", displayName: "Arc", addedDate: nil),
+            LaunchableApp(bundleIdentifier: "com.example.notes", path: "/Applications/Notes.app", displayName: "Notes", addedDate: nil)
+        ]
+
+        let settings = OpenLaunchSettings(sortMode: .name, displayMode: .paged, gridDensity: .medium, showLabels: true, hotkey: nil)
+        let sorted = AppSorter.sorted(apps, using: settings)
+
+        XCTAssertEqual(sorted.map(\.displayName), ["Arc", "Notes", "Safari"])
+    }
+
+    func testRecentlyOpenedSortFallsBackToNameWhenNoRecentDateExists() {
+        let apps = [
+            LaunchableApp(bundleIdentifier: "com.example.zed", path: "/Applications/Zed.app", displayName: "Zed", addedDate: nil, lastOpenedDate: nil),
+            LaunchableApp(bundleIdentifier: "com.example.arc", path: "/Applications/Arc.app", displayName: "Arc", addedDate: nil, lastOpenedDate: nil)
+        ]
+
+        let settings = OpenLaunchSettings(sortMode: .lastOpened, displayMode: .paged, gridDensity: .medium, showLabels: true, hotkey: nil)
+        let sorted = AppSorter.sorted(apps, using: settings)
+
+        XCTAssertEqual(sorted.map(\.displayName), ["Arc", "Zed"])
+    }
+}
