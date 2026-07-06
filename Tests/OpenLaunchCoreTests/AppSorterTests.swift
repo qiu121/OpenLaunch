@@ -42,4 +42,19 @@ final class AppSorterTests: XCTestCase {
 
         XCTAssertEqual(sorted.map(\.displayName), ["Arc", "Zed"])
     }
+
+    func testRecentlyOpenedSortPlacesNewestOpenedAppLast() {
+        let oldOpenDate = Date(timeIntervalSince1970: 100)
+        let newOpenDate = Date(timeIntervalSince1970: 300)
+        let apps = [
+            LaunchableApp(bundleIdentifier: "com.example.never", path: "/Applications/Never.app", displayName: "Never", addedDate: nil, lastOpenedDate: nil),
+            LaunchableApp(bundleIdentifier: "com.example.old", path: "/Applications/Old.app", displayName: "Old", addedDate: nil, lastOpenedDate: oldOpenDate),
+            LaunchableApp(bundleIdentifier: "com.example.new", path: "/Applications/New.app", displayName: "New", addedDate: nil, lastOpenedDate: newOpenDate)
+        ]
+
+        let settings = OpenLaunchSettings(sortMode: .lastOpened, displayMode: .paged, gridDensity: .medium, showLabels: true, hotkey: nil)
+        let sorted = AppSorter.sorted(apps, using: settings)
+
+        XCTAssertEqual(sorted.map(\.displayName), ["Never", "Old", "New"])
+    }
 }

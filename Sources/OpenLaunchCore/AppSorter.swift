@@ -48,11 +48,11 @@ public enum AppSorter {
     private static func compareByLastOpened(_ lhs: LaunchableApp, _ rhs: LaunchableApp) -> Bool {
         switch (lhs.lastOpenedDate, rhs.lastOpenedDate) {
         case let (left?, right?) where left != right:
-            return left > right
+            return left < right
         case (_?, nil):
-            return true
-        case (nil, _?):
             return false
+        case (nil, _?):
+            return true
         default:
             return compareByName(lhs, rhs)
         }

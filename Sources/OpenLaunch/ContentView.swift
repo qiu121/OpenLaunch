@@ -1,14 +1,22 @@
 import AppKit
 import OpenLaunchCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// OpenLaunch 主窗口，展示搜索、排序控制和应用网格。
 struct ContentView: View {
     @ObservedObject var state: AppState
-    @GestureState private var pageDragTranslation: CGFloat = 0
+    @State private var pageDragTranslation: CGFloat = 0
+    @State private var draggingAppID: String?
+    @State private var dropTargetAppID: String?
 
     private var displayedApps: [LaunchableApp] {
         state.settings.displayMode == .paged ? state.currentPageApps : state.visibleApps
+    }
+
+    private var isCustomOrderingEnabled: Bool {
+        state.settings.sortMode == .custom
+            && state.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -42,14 +50,12 @@ struct ContentView: View {
             if state.apps.isEmpty {
                 state.scanApplications()
             }
-            focusSearch()
         }
         .onChange(of: state.searchText) {
             withPageAnimation {
                 state.goToPage(0)
             }
         }
-        .simultaneousGesture(horizontalPagingGesture)
         .onExitCommand {
             OpenLaunchWindowActions.hide()
         }
@@ -76,6 +82,16 @@ struct ContentView: View {
     }
 
     private var header: some View {
+        HStack(alignment: .center, spacing: 12) {
+            searchBar
+            settingsMenu
+        }
+        .padding(.horizontal, 34)
+        .padding(.top, LaunchGridLayoutMetrics.searchTopPadding)
+        .padding(.bottom, 30)
+    }
+
+    private var searchBar: some View {
         HStack(alignment: .center, spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 15, weight: .semibold))
@@ -89,7 +105,6 @@ struct ContentView: View {
 
             Button {
                 state.searchText = ""
-                focusSearch()
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 15, weight: .medium))
@@ -101,9 +116,61 @@ struct ContentView: View {
         .padding(.horizontal, 14)
         .frame(width: LaunchGridLayoutMetrics.searchHitWidth, height: LaunchGridLayoutMetrics.searchControlHeight)
         .background(searchGlassBackground)
-        .padding(.horizontal, 34)
-        .padding(.top, LaunchGridLayoutMetrics.searchTopPadding)
-        .padding(.bottom, 30)
+    }
+
+    private var settingsMenu: some View {
+        Menu {
+            Section("排序方式") {
+                Picker("排序方式", selection: sortModeSelection) {
+                    ForEach(AppSortMode.allCases, id: \.self) { sortMode in
+                        Label(sortMode.menuTitle, systemImage: sortMode.menuSymbolName)
+                            .tag(sortMode)
+                    }
+                }
+                .pickerStyle(.inline)
+            }
+
+            Section("显示模式") {
+                Picker("显示模式", selection: displayModeSelection) {
+                    ForEach(DisplayMode.allCases, id: \.self) { displayMode in
+                        Label(displayMode.menuTitle, systemImage: displayMode.menuSymbolName)
+                            .tag(displayMode)
+                    }
+                }
+                .pickerStyle(.inline)
+            }
+
+            Divider()
+
+            Button {
+                state.scanApplications()
+            } label: {
+                Label("重新扫描", systemImage: "arrow.clockwise")
+            }
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.78))
+                .frame(width: LaunchGridLayoutMetrics.searchControlHeight, height: LaunchGridLayoutMetrics.searchControlHeight)
+                .background(settingsGlassBackground)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("设置")
+    }
+
+    private var sortModeSelection: Binding<AppSortMode> {
+        Binding(
+            get: { state.settings.sortMode },
+            set: { state.updateSortMode($0) }
+        )
+    }
+
+    private var displayModeSelection: Binding<DisplayMode> {
+        Binding(
+            get: { state.settings.displayMode },
+            set: { state.updateDisplayMode($0) }
+        )
     }
 
     private var searchGlassBackground: some View {
@@ -114,6 +181,16 @@ struct ContentView: View {
                     .stroke(Color.white.opacity(0.28), lineWidth: 0.8)
             }
             .shadow(color: .black.opacity(0.24), radius: 14, x: 0, y: 5)
+    }
+
+    private var settingsGlassBackground: some View {
+        Circle()
+            .fill(.ultraThinMaterial)
+            .overlay {
+                Circle()
+                    .stroke(Color.white.opacity(0.24), lineWidth: 0.8)
+            }
+            .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 4)
     }
 
     private var appGrid: some View {
@@ -161,10 +238,9 @@ struct ContentView: View {
                 .frame(width: pageWidth * CGFloat(pageCount), height: proxy.size.height, alignment: .leading)
                 .offset(x: trackOffset)
                 .animation(pageTurnAnimation, value: state.currentPage)
-                .animation(nil, value: pageDragTranslation)
-                .animation(nil, value: state.scrollPageTranslation)
             }
             .clipped()
+            .simultaneousGesture(horizontalPagingGesture(pageWidth: pageWidth))
         }
     }
 
@@ -177,9 +253,7 @@ struct ContentView: View {
                 }
 
             ForEach(Array(apps.enumerated()), id: \.element.id) { index, app in
-                AppTile(app: app, showLabel: state.settings.showLabels) {
-                    state.launch(app)
-                }
+                appTile(for: app)
                 .position(LaunchGridLayoutMetrics.position(for: index, in: size, settings: state.settings))
             }
         }
@@ -198,7 +272,11 @@ struct ContentView: View {
     }
 
     private var pageTurnAnimation: Animation {
-        .timingCurve(0.18, 0.86, 0.18, 1.0, duration: Double(LaunchGridLayoutMetrics.pageTurnAnimationDuration))
+        .interactiveSpring(
+            response: Double(LaunchGridLayoutMetrics.pageTurnAnimationDuration),
+            dampingFraction: 0.86,
+            blendDuration: 0.05
+        )
     }
 
     private var scrollingGrid: some View {
@@ -213,9 +291,7 @@ struct ContentView: View {
     private var appGridContent: some View {
         LazyVGrid(columns: gridColumns, spacing: 22) {
             ForEach(displayedApps) { app in
-                AppTile(app: app, showLabel: state.settings.showLabels) {
-                    state.launch(app)
-                }
+                appTile(for: app)
             }
         }
     }
@@ -239,7 +315,6 @@ struct ContentView: View {
                     withPageAnimation {
                         state.goToPage(page)
                     }
-                    focusSearch()
                 } label: {
                     Circle()
                         .fill(page == state.currentPage ? Color.white : Color.white.opacity(0.3))
@@ -266,33 +341,35 @@ struct ContentView: View {
         )
     }
 
-    private var horizontalPagingGesture: some Gesture {
-        DragGesture(minimumDistance: LaunchGridLayoutMetrics.pageSwipeThreshold)
-            .updating($pageDragTranslation) { value, gestureState, _ in
+    private func horizontalPagingGesture(pageWidth: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: LaunchGridLayoutMetrics.pageGestureMinimumDistance)
+            .onChanged { value in
                 guard state.settings.displayMode == .paged,
                       isHorizontalDrag(value.translation) else {
                     return
                 }
 
-                gestureState = value.translation.width
+                updatePageDragTranslation(value.translation.width)
             }
             .onEnded { value in
                 guard state.settings.displayMode == .paged else {
+                    resetPageDragTranslation()
                     return
                 }
 
-                guard let direction = PageCarouselLayout.targetDirection(
+                let targetPage = PageCarouselLayout.snapTargetPage(
+                    currentPage: state.currentPage,
+                    pageWidth: pageWidth,
                     translation: value.translation.width,
                     predictedTranslation: value.predictedEndTranslation.width,
-                    verticalTranslation: value.translation.height
-                ) else {
-                    return
-                }
+                    verticalTranslation: value.translation.height,
+                    pageCount: state.pageCount
+                )
 
                 withPageAnimation {
-                    applyPageSwipe(direction)
+                    state.goToPage(targetPage)
+                    pageDragTranslation = 0
                 }
-                focusSearch()
             }
     }
 
@@ -300,17 +377,51 @@ struct ContentView: View {
         abs(translation.width) > abs(translation.height) * 1.15
     }
 
-    private func applyPageSwipe(_ direction: PageSwipeInterpreter.Direction) {
-        switch direction {
-        case .previous:
-            state.previousPage()
-        case .next:
-            state.nextPage()
+    private func updatePageDragTranslation(_ translation: CGFloat) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            pageDragTranslation = translation
         }
     }
 
-    private func focusSearch() {
-        // `SearchField` 在 SwiftUI 更新时会自动恢复键盘焦点。
+    private func resetPageDragTranslation() {
+        withPageAnimation {
+            pageDragTranslation = 0
+        }
+    }
+
+    private func appTile(for app: LaunchableApp) -> some View {
+        AppTile(
+            app: app,
+            showLabel: state.settings.showLabels,
+            isCustomOrderingEnabled: isCustomOrderingEnabled,
+            draggingAppID: $draggingAppID,
+            dropTargetAppID: $dropTargetAppID,
+            insertionEdge: insertionEdge(for: app)
+        ) {
+            state.launch(app)
+        } moveAction: { draggedAppID, targetAppID in
+            withPageAnimation {
+                state.moveAppForCustomSort(draggedAppID: draggedAppID, targetAppID: targetAppID)
+            }
+        }
+    }
+
+    private func insertionEdge(for app: LaunchableApp) -> CustomInsertionEdge? {
+        guard dropTargetAppID == app.stableKey,
+              let draggingAppID,
+              draggingAppID != app.stableKey else {
+            return nil
+        }
+
+        let orderedAppIDs = state.sortedApps.map(\.stableKey)
+        guard let sourceIndex = orderedAppIDs.firstIndex(of: draggingAppID),
+              let targetIndex = orderedAppIDs.firstIndex(of: app.stableKey) else {
+            return .before
+        }
+
+        return sourceIndex < targetIndex ? .after : .before
     }
 
     private func withPageAnimation(_ updates: () -> Void) {
@@ -321,33 +432,236 @@ struct ContentView: View {
 private struct AppTile: View {
     let app: LaunchableApp
     let showLabel: Bool
+    let isCustomOrderingEnabled: Bool
+    @Binding var draggingAppID: String?
+    @Binding var dropTargetAppID: String?
+    let insertionEdge: CustomInsertionEdge?
     let action: () -> Void
+    let moveAction: (_ draggedAppID: String, _ targetAppID: String) -> Void
 
+    @ViewBuilder
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: app.path))
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: LaunchGridLayoutMetrics.iconSize, height: LaunchGridLayoutMetrics.iconSize)
-
-                if showLabel {
-                    Text(app.displayName)
-                        .font(.caption.weight(.medium))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                        .frame(height: 34, alignment: .top)
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.65), radius: 2, x: 0, y: 1)
+        if isCustomOrderingEnabled {
+            tileContent
+                .offset(x: insertionOffset)
+                .overlay(alignment: .center) {
+                    customDropIndicator
                 }
-            }
-            .frame(
-                width: LaunchGridLayoutMetrics.tileWidth,
-                height: showLabel ? LaunchGridLayoutMetrics.labeledTileHeight : LaunchGridLayoutMetrics.iconOnlyTileHeight
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+                .animation(dropPreviewAnimation, value: insertionEdge)
+                .onDrag {
+                    draggingAppID = app.stableKey
+                    return NSItemProvider(object: app.stableKey as NSString)
+                }
+                .onDrop(
+                    of: [UTType.text],
+                    delegate: AppTileDropDelegate(
+                        appID: app.stableKey,
+                        draggingAppID: $draggingAppID,
+                        dropTargetAppID: $dropTargetAppID,
+                        moveAction: moveAction
+                    )
+                )
+                .help("拖动以调整顺序")
+        } else {
+            appButton
+        }
+    }
+
+    private var dropPreviewAnimation: Animation {
+        .interactiveSpring(response: 0.22, dampingFraction: 0.82, blendDuration: 0.02)
+    }
+
+    private var insertionOffset: CGFloat {
+        guard let insertionEdge else {
+            return 0
+        }
+
+        return insertionEdge == .before ? 12 : -12
+    }
+
+    private var appButton: some View {
+        Button(action: action) {
+            tileContent
         }
         .buttonStyle(.plain)
         .help(app.displayName)
+    }
+
+    private var tileContent: some View {
+        VStack(spacing: 6) {
+            AppIconImage(path: app.path)
+
+            if showLabel {
+                Text(app.displayName)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(height: 34, alignment: .top)
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.65), radius: 2, x: 0, y: 1)
+            }
+        }
+        .frame(
+            width: LaunchGridLayoutMetrics.tileWidth,
+            height: showLabel ? LaunchGridLayoutMetrics.labeledTileHeight : LaunchGridLayoutMetrics.iconOnlyTileHeight
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private var customDropIndicator: some View {
+        if let insertionEdge {
+            insertionSlot(for: insertionEdge)
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func insertionSlot(for edge: CustomInsertionEdge) -> some View {
+        let slotOffset = edge == .before
+            ? -LaunchGridLayoutMetrics.tileWidth / 2 + 12
+            : LaunchGridLayoutMetrics.tileWidth / 2 - 12
+
+        return RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .frame(width: 34, height: LaunchGridLayoutMetrics.iconSize + 18)
+            .overlay {
+                Capsule()
+                    .fill(Color.white.opacity(0.82))
+                    .frame(width: 5, height: LaunchGridLayoutMetrics.iconSize * 0.74)
+                    .shadow(color: .white.opacity(0.22), radius: 5, x: 0, y: 0)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 0.8)
+            }
+            .shadow(color: .black.opacity(0.24), radius: 10, x: 0, y: 4)
+            .offset(x: slotOffset, y: -14)
+    }
+}
+
+private enum CustomInsertionEdge {
+    case before
+    case after
+}
+
+private struct AppTileDropDelegate: DropDelegate {
+    let appID: String
+    @Binding var draggingAppID: String?
+    @Binding var dropTargetAppID: String?
+    let moveAction: (_ draggedAppID: String, _ targetAppID: String) -> Void
+
+    func validateDrop(info: DropInfo) -> Bool {
+        guard let draggingAppID else {
+            return false
+        }
+
+        return draggingAppID != appID
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard validateDrop(info: info) else {
+            return
+        }
+
+        withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.84, blendDuration: 0.02)) {
+            dropTargetAppID = appID
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        guard dropTargetAppID == appID else {
+            return
+        }
+
+        withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.84, blendDuration: 0.02)) {
+            dropTargetAppID = nil
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let draggingAppID, draggingAppID != appID else {
+            self.draggingAppID = nil
+            dropTargetAppID = nil
+            return false
+        }
+
+        moveAction(draggingAppID, appID)
+        self.draggingAppID = nil
+        dropTargetAppID = nil
+        return true
+    }
+}
+
+private struct AppIconImage: View {
+    let path: String
+
+    var body: some View {
+        Image(nsImage: icon)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: LaunchGridLayoutMetrics.iconSize, height: LaunchGridLayoutMetrics.iconSize)
+    }
+
+    private var icon: NSImage {
+        let resolvedPath = URL(fileURLWithPath: path, isDirectory: true)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+        let bundleIcon = NSWorkspace.shared.icon(forFile: resolvedPath)
+        bundleIcon.size = NSSize(width: LaunchGridLayoutMetrics.iconSize, height: LaunchGridLayoutMetrics.iconSize)
+        return bundleIcon
+    }
+}
+
+private extension AppSortMode {
+    var menuTitle: String {
+        switch self {
+        case .addedDate:
+            return "添加时间"
+        case .name:
+            return "名称"
+        case .lastOpened:
+            return "最近打开"
+        case .custom:
+            return "自定义排序"
+        }
+    }
+
+    var menuSymbolName: String {
+        switch self {
+        case .addedDate:
+            return "calendar.badge.plus"
+        case .name:
+            return "textformat"
+        case .lastOpened:
+            return "clock.arrow.circlepath"
+        case .custom:
+            return "arrow.up.arrow.down.square"
+        }
+    }
+}
+
+private extension DisplayMode {
+    var menuTitle: String {
+        switch self {
+        case .paged:
+            return "分页"
+        case .scroll:
+            return "滚动"
+        }
+    }
+
+    var menuSymbolName: String {
+        switch self {
+        case .paged:
+            return "square.grid.3x3"
+        case .scroll:
+            return "scroll"
+        }
     }
 }

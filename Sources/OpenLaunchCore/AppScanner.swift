@@ -5,6 +5,8 @@ import CoreServices
 public struct AppScanner {
     /// 需要扫描的根目录。
     public let scanRoots: [URL]
+    private let excludedBundleIdentifiers: Set<String>
+    private let excludedApplicationPaths: Set<String>
 
     private let metadataProvider: any AppMetadataProviding
     private let candidateProvider: any AppCandidateProviding
@@ -12,9 +14,13 @@ public struct AppScanner {
     public init(
         scanRoots: [URL] = AppScanner.defaultScanRoots(),
         metadataProvider: any AppMetadataProviding = SpotlightMetadataProvider(),
-        candidateProvider: (any AppCandidateProviding)? = nil
+        candidateProvider: (any AppCandidateProviding)? = nil,
+        excludedBundleIdentifiers: Set<String> = AppScanner.defaultExcludedBundleIdentifiers(),
+        excludedApplicationPaths: Set<String> = AppScanner.defaultExcludedApplicationPaths()
     ) {
         self.scanRoots = scanRoots
+        self.excludedBundleIdentifiers = excludedBundleIdentifiers
+        self.excludedApplicationPaths = excludedApplicationPaths
         self.metadataProvider = metadataProvider
         self.candidateProvider = candidateProvider ?? AppScanner.defaultCandidateProvider(for: scanRoots)
     }
@@ -42,30 +48,58 @@ public struct AppScanner {
     }
 
     private func application(at appURL: URL) throws -> LaunchableApp? {
-        let infoURL = appURL.appendingPathComponent("Contents/Info.plist")
+        let resolvedAppURL = appURL.standardizedFileURL.resolvingSymlinksInPath()
+        let infoURL = resolvedAppURL.appendingPathComponent("Contents/Info.plist")
         let info = try readInfoPlist(at: infoURL)
+        let bundleIdentifier = stringValue(info["CFBundleIdentifier"])
+
+        if isExcludedSelfApplication(at: resolvedAppURL, bundleIdentifier: bundleIdentifier) {
+            return nil
+        }
 
         if boolValue(info["LSBackgroundOnly"]) {
             return nil
         }
 
-        let bundleIdentifier = stringValue(info["CFBundleIdentifier"])
         let displayName = stringValue(info["CFBundleDisplayName"])
             ?? stringValue(info["CFBundleName"])
-            ?? appURL.deletingPathExtension().lastPathComponent
+            ?? resolvedAppURL.deletingPathExtension().lastPathComponent
         let category = stringValue(info["LSApplicationCategoryType"])
-        let metadata = metadataProvider.metadata(for: appURL)
+        let metadata = metadataProvider.metadata(for: resolvedAppURL)
         let modifiedDate = metadata.modifiedDate
         let addedDate = metadata.spotlightDateAdded ?? metadata.creationDate ?? metadata.modifiedDate
 
         return LaunchableApp(
             bundleIdentifier: bundleIdentifier,
-            path: appURL.path,
+            path: resolvedAppURL.path,
             displayName: displayName,
             category: category,
             addedDate: addedDate,
             modifiedDate: modifiedDate
         )
+    }
+
+    private func isExcludedSelfApplication(at appURL: URL, bundleIdentifier: String?) -> Bool {
+        if let bundleIdentifier, excludedBundleIdentifiers.contains(bundleIdentifier) {
+            return true
+        }
+
+        let appPath = appURL.standardizedFileURL.resolvingSymlinksInPath().path
+        let normalizedAppPath = normalizedPath(appPath)
+
+        if excludedApplicationPaths.contains(appPath) || excludedApplicationPaths.contains(normalizedAppPath) {
+            return true
+        }
+
+        return excludedApplicationPaths.contains(appPath.lowercased()) || excludedApplicationPaths.contains(normalizedAppPath.lowercased())
+    }
+
+    private func normalizedPath(_ path: String) -> String {
+        if path.hasPrefix("/private/") {
+            return String(path.dropFirst("/private/".count))
+        }
+
+        return path
     }
 
     private func readInfoPlist(at url: URL) throws -> [String: Any] {
@@ -108,12 +142,26 @@ public struct AppScanner {
         let home = FileManager.default.homeDirectoryForCurrentUser
 
         return [
+            URL(fileURLWithPath: "/System/Cryptexes/App/System/Applications", isDirectory: true),
             URL(fileURLWithPath: "/Applications", isDirectory: true),
             URL(fileURLWithPath: "/System/Applications", isDirectory: true),
             URL(fileURLWithPath: "/Applications/Utilities", isDirectory: true),
             URL(fileURLWithPath: "/System/Library/CoreServices/Applications", isDirectory: true),
             home.appendingPathComponent("Applications", isDirectory: true)
         ]
+    }
+
+    public static func defaultExcludedBundleIdentifiers() -> Set<String> {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier else {
+            return []
+        }
+
+        return [bundleIdentifier]
+    }
+
+    public static func defaultExcludedApplicationPaths() -> Set<String> {
+        let bundlePath = Bundle.main.bundleURL.standardizedFileURL.resolvingSymlinksInPath().path
+        return [bundlePath]
     }
 
     private static func defaultCandidateProvider(for scanRoots: [URL]) -> any AppCandidateProviding {
@@ -256,6 +304,8 @@ public struct AppCandidateVisibilityPolicy {
         let publicRoots = [
             "/Applications",
             "/System/Applications",
+            "/System/Cryptexes/App/System/Applications",
+            "/System/Volumes/Preboot/Cryptexes/App/System/Applications",
             "/System/Library/CoreServices/Applications",
             homeDirectory.appendingPathComponent("Applications", isDirectory: true).standardizedDirectoryPath
         ]
@@ -321,7 +371,7 @@ public struct MergedAppCandidateProvider: AppCandidateProviding {
 
         for provider in providers {
             for url in provider.applicationURLs(in: scanRoots) {
-                let path = url.standardizedFileURL.path
+                let path = url.standardizedFileURL.resolvingSymlinksInPath().path
                 guard seenPaths.insert(path).inserted else {
                     continue
                 }

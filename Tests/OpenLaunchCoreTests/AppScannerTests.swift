@@ -58,8 +58,10 @@ final class AppScannerTests: XCTestCase {
 
     func testDefaultScanRootsIncludeCoreServicesApplications() {
         let coreServicesApplications = URL(fileURLWithPath: "/System/Library/CoreServices/Applications", isDirectory: true)
+        let cryptexApplications = URL(fileURLWithPath: "/System/Cryptexes/App/System/Applications", isDirectory: true)
 
         XCTAssertTrue(AppScanner.defaultScanRoots().contains(coreServicesApplications))
+        XCTAssertTrue(AppScanner.defaultScanRoots().contains(cryptexApplications))
     }
 
     func testScansApplicationsReturnedByCandidateProvider() throws {
@@ -104,6 +106,13 @@ final class AppScannerTests: XCTestCase {
         XCTAssertTrue(policy.allows(URL(fileURLWithPath: "/System/Library/CoreServices/Applications/Keychain Access.app")))
     }
 
+    func testCandidateVisibilityPolicyKeepsCryptexApplications() {
+        let policy = AppCandidateVisibilityPolicy()
+
+        XCTAssertTrue(policy.allows(URL(fileURLWithPath: "/System/Cryptexes/App/System/Applications/Safari.app")))
+        XCTAssertTrue(policy.allows(URL(fileURLWithPath: "/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app")))
+    }
+
     func testFiltersBackgroundOnlyButKeepsAgentAppsWithUi() throws {
         try makeApplicationBundle(
             named: "Visible.app",
@@ -146,6 +155,26 @@ final class AppScannerTests: XCTestCase {
 
         XCTAssertEqual(apps.count, 1)
         XCTAssertEqual(apps[0].bundleIdentifier, "com.example.Shared")
+    }
+
+    func testStoresResolvedPathForSymlinkedApplicationBundle() throws {
+        let realDirectory = temporaryDirectory.appendingPathComponent("System/Cryptexes/App/System/Applications", isDirectory: true)
+        try FileManager.default.createDirectory(at: realDirectory, withIntermediateDirectories: true)
+        let realApp = try makeApplicationBundle(
+            named: "Safari.app",
+            bundleIdentifier: "com.apple.Safari",
+            displayName: "Safari",
+            in: realDirectory
+        )
+        let applicationsDirectory = temporaryDirectory.appendingPathComponent("Applications", isDirectory: true)
+        try FileManager.default.createDirectory(at: applicationsDirectory, withIntermediateDirectories: true)
+        let symlinkApp = applicationsDirectory.appendingPathComponent("Safari.app", isDirectory: true)
+        try FileManager.default.createSymbolicLink(at: symlinkApp, withDestinationURL: realApp)
+
+        let scanner = AppScanner(scanRoots: [applicationsDirectory], candidateProvider: StubCandidateProvider(urls: [symlinkApp]))
+        let apps = try scanner.scanApplications()
+
+        XCTAssertEqual(apps[0].path, realApp.resolvingSymlinksInPath().path)
     }
 
     @discardableResult

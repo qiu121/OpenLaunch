@@ -1,4 +1,5 @@
 import AppKit
+import OpenLaunchCore
 import QuartzCore
 
 /// 管理 OpenLaunch 的全屏覆盖窗口。
@@ -21,6 +22,7 @@ final class LaunchWindowController {
         window.isReleasedWhenClosed = false
         window.isRestorable = false
         window.restorationClass = nil
+        window.acceptsMouseMovedEvents = true
         window.level = launcherWindowLevel
         window.collectionBehavior = [
             .canJoinAllSpaces,
@@ -40,18 +42,22 @@ final class LaunchWindowController {
             window.setFrame(fullscreenFrameRespectingDock(on: screen), display: true)
         }
 
-        hideMenuBarWhileLauncherIsVisible()
-
         let wasVisible = window.isVisible
-        if !wasVisible {
+        if !wasVisible, LauncherChromePolicy.usesWindowAlphaFadeOnPresentation {
             window.alphaValue = 0
+        } else {
+            window.alphaValue = 1
         }
 
         window.ignoresMouseEvents = false
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        if LauncherChromePolicy.ordersWindowFrontRegardless {
+            window.orderFrontRegardless()
+        }
+        hideMenuBarIfPossible()
 
-        if !wasVisible {
+        if !wasVisible, LauncherChromePolicy.usesWindowAlphaFadeOnPresentation {
             fadeIn(window)
         } else {
             window.alphaValue = 1
@@ -149,19 +155,36 @@ final class LaunchWindowController {
     }
 
     private var launcherWindowLevel: NSWindow.Level {
-        NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.dockWindow)) - 1)
+        NSWindow.Level(rawValue: Int(LauncherChromePolicy.contentWindowLevelRawValue))
     }
 
-    private func hideMenuBarWhileLauncherIsVisible() {
+    func hideMenuBarIfPossible() {
+        guard !LauncherChromePolicy.requiresActiveApplicationForMenuBarHiding || NSApp.isActive else {
+            return
+        }
+
         var options = NSApp.presentationOptions
-        options.insert(.autoHideMenuBar)
+        options.remove(.autoHideMenuBar)
+        options.remove(.hideMenuBar)
+        options.remove(.autoHideDock)
+        options.remove(.hideDock)
+        if LauncherChromePolicy.usesAutoHideSystemBars {
+            options.insert(.autoHideMenuBar)
+            options.insert(.autoHideDock)
+        }
         NSApp.presentationOptions = options
     }
 
     private func restoreMenuBarAfterLauncherHides() {
         var options = NSApp.presentationOptions
         options.remove(.autoHideMenuBar)
+        options.remove(.hideMenuBar)
+        options.remove(.autoHideDock)
+        options.remove(.hideDock)
         NSApp.presentationOptions = options
+        if LauncherChromePolicy.returnsToAccessoryAfterHiding {
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 
     private func finishHiding(_ window: NSWindow, restoredLevel: NSWindow.Level) {
@@ -170,6 +193,7 @@ final class LaunchWindowController {
         window.level = restoredLevel
         window.ignoresMouseEvents = false
         restoreMenuBarAfterLauncherHides()
+        NotificationCenter.default.post(name: .openLaunchDidHide, object: nil)
     }
 
     private func fadeIn(_ window: NSWindow) {

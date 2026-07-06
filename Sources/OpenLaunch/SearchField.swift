@@ -34,6 +34,7 @@ struct SearchField: NSViewRepresentable {
         searchField.lineBreakMode = .byTruncatingTail
         searchField.delegate = context.coordinator
         searchField.onEscape = onEscape
+        searchField.configureFocusObserver()
         context.coordinator.onEscape = onEscape
         return searchField
     }
@@ -44,10 +45,15 @@ struct SearchField: NSViewRepresentable {
         }
         searchField.onEscape = onEscape
 
-        DispatchQueue.main.async {
-            searchField.window?.makeFirstResponder(searchField)
-            searchField.currentEditor()?.selectedRange = NSRange(location: searchField.stringValue.count, length: 0)
+        if searchField.isOpenLaunchFirstResponder {
+            DispatchQueue.main.async {
+                searchField.moveInsertionPointToEnd()
+            }
         }
+    }
+
+    static func dismantleNSView(_ nsView: OpenLaunchSearchField, coordinator: Coordinator) {
+        nsView.invalidateFocusObserver()
     }
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
@@ -97,6 +103,8 @@ struct SearchField: NSViewRepresentable {
 /// 捕获 Escape 的文本输入子类。
 final class OpenLaunchSearchField: NSTextField {
     var onEscape: (() -> Void)?
+    private var focusObserver: NSObjectProtocol?
+    private var blurObserver: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -118,7 +126,7 @@ final class OpenLaunchSearchField: NSTextField {
     }
 
     override func mouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(self)
+        focusAndMoveInsertionPointToEnd()
         super.mouseDown(with: event)
         updateInsertionPointAppearance()
     }
@@ -131,6 +139,64 @@ final class OpenLaunchSearchField: NSTextField {
 
     override func cancelOperation(_ sender: Any?) {
         onEscape?()
+    }
+
+    var isOpenLaunchFirstResponder: Bool {
+        guard let firstResponder = window?.firstResponder else {
+            return false
+        }
+
+        return firstResponder === self || firstResponder === currentEditor()
+    }
+
+    func configureFocusObserver() {
+        guard focusObserver == nil else {
+            return
+        }
+
+        focusObserver = NotificationCenter.default.addObserver(
+            forName: .openLaunchFocusSearch,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.focusAndMoveInsertionPointToEnd()
+        }
+
+        blurObserver = NotificationCenter.default.addObserver(
+            forName: .openLaunchBlurSearch,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.resignOpenLaunchFocus()
+        }
+    }
+
+    func invalidateFocusObserver() {
+        if let focusObserver {
+            NotificationCenter.default.removeObserver(focusObserver)
+            self.focusObserver = nil
+        }
+        if let blurObserver {
+            NotificationCenter.default.removeObserver(blurObserver)
+            self.blurObserver = nil
+        }
+    }
+
+    func moveInsertionPointToEnd() {
+        currentEditor()?.selectedRange = NSRange(location: stringValue.count, length: 0)
+        updateInsertionPointAppearance()
+    }
+
+    private func focusAndMoveInsertionPointToEnd() {
+        window?.makeFirstResponder(self)
+        moveInsertionPointToEnd()
+    }
+
+    private func resignOpenLaunchFocus() {
+        abortEditing()
+        if isOpenLaunchFirstResponder {
+            window?.makeFirstResponder(nil)
+        }
     }
 
     private func updateInsertionPointAppearance() {

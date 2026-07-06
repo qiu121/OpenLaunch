@@ -71,6 +71,37 @@ final class LaunchGridLayoutMetricsTests: XCTestCase {
         )
     }
 
+    func testScrollPagingIdleDelayAllowsSlowInteractiveScroll() {
+        XCTAssertGreaterThanOrEqual(LaunchGridLayoutMetrics.scrollPagingIdleFinishDelayNanoseconds, 600_000_000)
+    }
+
+    func testLauncherChromePolicyKeepsContentBelowDockWithoutVisibleMenuBarShield() {
+        XCTAssertLessThan(LauncherChromePolicy.contentWindowLevelRawValue, CGWindowLevelForKey(.dockWindow))
+        XCTAssertFalse(LauncherChromePolicy.usesMenuBarShield)
+    }
+
+    func testLauncherChromePolicyDefersInitialPresentationForAccessoryLaunch() {
+        XCTAssertGreaterThanOrEqual(LauncherChromePolicy.initialPresentationDelayNanoseconds, 180_000_000)
+        XCTAssertTrue(LauncherChromePolicy.ordersWindowFrontRegardless)
+        XCTAssertFalse(LauncherChromePolicy.hidesOnApplicationResignActive)
+        XCTAssertFalse(LauncherChromePolicy.usesWindowAlphaFadeOnPresentation)
+        XCTAssertTrue(LauncherChromePolicy.usesMainQueueForInitialPresentation)
+        XCTAssertTrue(LauncherChromePolicy.requiresActiveApplicationForMenuBarHiding)
+        XCTAssertTrue(LauncherChromePolicy.usesRegularActivationDuringPresentation)
+        XCTAssertTrue(LauncherChromePolicy.usesAutoHideSystemBars)
+        XCTAssertFalse(LauncherChromePolicy.usesForcedMenuBarHiding)
+        XCTAssertTrue(LauncherChromePolicy.usesTransparentMenuBarTriggerShield)
+        XCTAssertGreaterThanOrEqual(LauncherChromePolicy.menuBarTriggerShieldHeight, 44)
+        XCTAssertTrue(LauncherChromePolicy.hidesStatusItemWhileLauncherVisible)
+        XCTAssertFalse(LauncherChromePolicy.returnsToAccessoryImmediatelyAfterPresentation)
+        XCTAssertTrue(LauncherChromePolicy.returnsToAccessoryAfterHiding)
+        XCTAssertGreaterThanOrEqual(LauncherChromePolicy.externalActivationSuppressionAfterPresentationNanoseconds, 300_000_000)
+    }
+
+    func testSettingsMenuUsesNativePickerSelection() {
+        XCTAssertTrue(SettingsMenuPolicy.usesNativePickerSelection)
+    }
+
     func testPageCarouselTargetDirectionUsesPredictedDrag() {
         XCTAssertEqual(
             PageCarouselLayout.targetDirection(translation: -18, predictedTranslation: -170, verticalTranslation: 4),
@@ -78,6 +109,109 @@ final class LaunchGridLayoutMetricsTests: XCTestCase {
         )
         XCTAssertNil(
             PageCarouselLayout.targetDirection(translation: -18, predictedTranslation: -30, verticalTranslation: 4)
+        )
+    }
+
+    func testPageCarouselSnapTargetUsesDragDistance() {
+        XCTAssertEqual(
+            PageCarouselLayout.snapTargetPage(
+                currentPage: 1,
+                pageWidth: 1_000,
+                translation: -210,
+                predictedTranslation: -220,
+                verticalTranslation: 20,
+                pageCount: 4
+            ),
+            2
+        )
+        XCTAssertEqual(
+            PageCarouselLayout.snapTargetPage(
+                currentPage: 1,
+                pageWidth: 1_000,
+                translation: 210,
+                predictedTranslation: 220,
+                verticalTranslation: 20,
+                pageCount: 4
+            ),
+            0
+        )
+    }
+
+    func testPageCarouselSnapTargetUsesPredictedLightFlick() {
+        XCTAssertEqual(
+            PageCarouselLayout.snapTargetPage(
+                currentPage: 1,
+                pageWidth: 1_000,
+                translation: -40,
+                predictedTranslation: -190,
+                verticalTranslation: 8,
+                pageCount: 4
+            ),
+            2
+        )
+    }
+
+    func testPageCarouselSnapTargetStaysOnCurrentPageForSmallOrVerticalDrags() {
+        XCTAssertEqual(
+            PageCarouselLayout.snapTargetPage(
+                currentPage: 1,
+                pageWidth: 1_000,
+                translation: -80,
+                predictedTranslation: -90,
+                verticalTranslation: 12,
+                pageCount: 4
+            ),
+            1
+        )
+        XCTAssertEqual(
+            PageCarouselLayout.snapTargetPage(
+                currentPage: 1,
+                pageWidth: 1_000,
+                translation: -280,
+                predictedTranslation: -320,
+                verticalTranslation: 310,
+                pageCount: 4
+            ),
+            1
+        )
+    }
+
+    func testPageCarouselSnapTargetUsesViewportProgressInsteadOfFixedDistanceCap() {
+        XCTAssertEqual(
+            PageCarouselLayout.snapTargetPage(
+                currentPage: 1,
+                pageWidth: 1_512,
+                translation: -170,
+                predictedTranslation: -180,
+                verticalTranslation: 8,
+                pageCount: 4
+            ),
+            1
+        )
+    }
+
+    func testPageCarouselSnapTargetClampsAtEdges() {
+        XCTAssertEqual(
+            PageCarouselLayout.snapTargetPage(
+                currentPage: 0,
+                pageWidth: 1_000,
+                translation: 260,
+                predictedTranslation: 280,
+                verticalTranslation: 10,
+                pageCount: 4
+            ),
+            0
+        )
+        XCTAssertEqual(
+            PageCarouselLayout.snapTargetPage(
+                currentPage: 3,
+                pageWidth: 1_000,
+                translation: -260,
+                predictedTranslation: -280,
+                verticalTranslation: 10,
+                pageCount: 4
+            ),
+            3
         )
     }
 
@@ -102,5 +236,10 @@ final class LaunchGridLayoutMetricsTests: XCTestCase {
             LaunchWindowRestorationPolicy.staleWindowFrameKeys(in: keys),
             ["NSWindow Frame SwiftUI.ModifiedContent<OpenLaunch.ContentView, SwiftUI._AppearanceActionModifier>-1-AppWindow-1"]
         )
+    }
+
+    func testRestorationPolicyDisablesSystemWindowRestoration() {
+        XCTAssertFalse(LaunchWindowRestorationPolicy.supportsSecureRestorableState)
+        XCTAssertFalse(LaunchWindowRestorationPolicy.quitAlwaysKeepsWindows)
     }
 }

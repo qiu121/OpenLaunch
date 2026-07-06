@@ -22,8 +22,10 @@ public enum LaunchGridLayoutMetrics {
     public static let searchTextFieldHeight: CGFloat = 22
     public static let dockRevealInset: CGFloat = 24
     public static let pageDragThreshold: CGFloat = 28
+    public static let pageGestureMinimumDistance: CGFloat = 4
     public static let pageSwipeThreshold: CGFloat = 12
-    public static let pageTurnAnimationDuration: CGFloat = 0.26
+    public static let pageTurnAnimationDuration: CGFloat = 0.32
+    public static let scrollPagingIdleFinishDelayNanoseconds: UInt64 = 650_000_000
 
     /// 计算分页模式下指定应用图标的中心点，坐标系为网格区域左上角。
     public static func position(for index: Int, in size: CGSize, settings: OpenLaunchSettings) -> CGPoint {
@@ -86,6 +88,32 @@ public enum LaunchGridLayoutMetrics {
     }
 }
 
+/// OpenLaunch 全屏覆盖层的系统栏策略：主内容窗口低于 Dock，不再创建顶部菜单栏遮罩窗口。
+public enum LauncherChromePolicy {
+    public static let contentWindowLevelRawValue = CGWindowLevelForKey(.dockWindow) - 1
+    public static let usesMenuBarShield = false
+    public static let initialPresentationDelayNanoseconds: UInt64 = 220_000_000
+    public static let ordersWindowFrontRegardless = true
+    public static let hidesOnApplicationResignActive = false
+    public static let usesWindowAlphaFadeOnPresentation = false
+    public static let usesMainQueueForInitialPresentation = true
+    public static let requiresActiveApplicationForMenuBarHiding = true
+    public static let usesRegularActivationDuringPresentation = true
+    public static let usesAutoHideSystemBars = true
+    public static let usesForcedMenuBarHiding = false
+    public static let usesTransparentMenuBarTriggerShield = true
+    public static let menuBarTriggerShieldHeight: CGFloat = 48
+    public static let hidesStatusItemWhileLauncherVisible = true
+    public static let returnsToAccessoryImmediatelyAfterPresentation = false
+    public static let returnsToAccessoryAfterHiding = true
+    public static let externalActivationSuppressionAfterPresentationNanoseconds: UInt64 = 500_000_000
+}
+
+/// 设置菜单策略：使用系统 Picker 生成原生勾选列，避免自定义菜单 label 触发 SwiftUI 菜单手势异常。
+public enum SettingsMenuPolicy {
+    public static let usesNativePickerSelection = true
+}
+
 /// 将触控板横向滑动或鼠标横向滚轮解释成分页方向。
 public enum PageSwipeInterpreter {
     public enum Direction: Equatable {
@@ -145,6 +173,7 @@ public struct PageSwipeAccumulator {
 public enum PageCarouselLayout {
     private static let edgeResistance: CGFloat = 0.24
     private static let predictedDragThreshold: CGFloat = 96
+    private static let pageSettleProgress: CGFloat = 0.18
 
     /// 根据当前页、屏宽和拖拽距离计算横向轨道偏移。
     public static func offset(currentPage: Int, pageWidth: CGFloat, dragTranslation: CGFloat, pageCount: Int) -> CGFloat {
@@ -181,6 +210,36 @@ public enum PageCarouselLayout {
         }
 
         return effectiveTranslation < 0 ? .next : .previous
+    }
+
+    /// 根据释放时的页面拖动进度计算目标页；每次手势最多移动到相邻一页。
+    public static func snapTargetPage(
+        currentPage: Int,
+        pageWidth: CGFloat,
+        translation: CGFloat,
+        predictedTranslation: CGFloat,
+        verticalTranslation: CGFloat,
+        pageCount: Int
+    ) -> Int {
+        guard pageCount > 0 else {
+            return 0
+        }
+
+        let clampedPage = min(max(currentPage, 0), pageCount - 1)
+        let effectiveTranslation = abs(predictedTranslation) > abs(translation)
+            ? predictedTranslation
+            : translation
+        let settleDistance = max(LaunchGridLayoutMetrics.pageDragThreshold, max(pageWidth, 1) * pageSettleProgress)
+
+        guard abs(effectiveTranslation) >= settleDistance,
+              abs(effectiveTranslation) > abs(verticalTranslation) * 1.2 else {
+            return clampedPage
+        }
+
+        let proposedPage = effectiveTranslation < 0
+            ? clampedPage + 1
+            : clampedPage - 1
+        return min(max(proposedPage, 0), pageCount - 1)
     }
 
     private static func resistedDragTranslation(_ dragTranslation: CGFloat, currentPage: Int, pageCount: Int) -> CGFloat {

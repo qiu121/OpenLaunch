@@ -67,7 +67,7 @@ public enum AppSortMode: String, Codable, CaseIterable, Equatable, Sendable {
     /// 按名称本地化升序排序。
     case name
 
-    /// 按最近打开时间从新到旧排序。
+    /// 按最近打开时间从旧到新排序，刚打开的应用排在后面。
     case lastOpened
 
     /// 按用户保存的自定义顺序排序。

@@ -28,18 +28,19 @@ Apple 生态里常见的用户可见应用名通常使用 PascalCase 或 Title C
 
 - 主窗口使用覆盖式全屏：显示时铺满鼠标所在屏幕，不进入 macOS 原生绿色全屏 Space。
 - 覆盖窗口由 AppDelegate 显式创建，不使用 SwiftUI `WindowGroup`，避免 macOS 窗口恢复把启动器还原成普通小窗口。
-- 覆盖窗口常态铺满屏幕，不在底部留下可见空条；窗口层级低于系统 Dock、高于普通窗口，让自动隐藏 Dock 能自然浮出。
-- 顶部系统菜单栏通过 `autoHideMenuBar` 自动隐藏，不使用会强行改变系统展示状态的 `hideMenuBar`。
+- 覆盖窗口常态铺满屏幕，不在底部留下可见空条；主内容窗口层级低于系统 Dock、高于普通窗口，让自动隐藏 Dock 能自然浮出。
+- 全屏覆盖层显示期间使用系统 `autoHideMenuBar` 和 `autoHideDock` 默认隐藏系统栏，同时用透明顶部触发拦截层阻止鼠标贴顶时菜单栏浮出。
 - 状态栏图标左键直接显示 OpenLaunch 全屏覆盖层；右键或 Control 点击才展示菜单。
 - Dock 图标使用 `Resources/OpenLaunchAppIcon.icns`，接近系统 Apps 入口图标气质；状态栏图标继续使用现有 SF Symbols 网格符号。
 - 全屏背景默认使用系统背景的模糊处理。
 - 默认排序为添加时间从旧到新，新添加的软件在最后。
 - 默认分页网格保持 7×5，图标默认尺寸为 96×96。
-- 全屏覆盖层显示时遮住顶部系统菜单栏整块区域；OpenLaunch 的菜单栏状态项作为退出覆盖层后的启动入口保留。
+- 全屏覆盖层显示时不展示顶部系统菜单栏整块区域；OpenLaunch 的菜单栏状态项作为退出覆盖层后的启动入口保留。
 - 默认应用扫描合并 Spotlight 应用索引和文件系统扫描，使用用户可见路径策略覆盖公开应用目录、用户独立 `.app` 和少量共享支持目录。
 - 添加时间优先使用 Spotlight `kMDItemDateAdded`，缺失时依次降级为文件创建时间、文件修改时间。
-- 顶部居中液态玻璃风格搜索框，包含放大镜图标、清除按钮和舒适内边距，键盘输入默认进入搜索框并实时过滤。
-- 底部仅显示分页圆点，支持点击跳页、鼠标/触控板横向滚轮翻页和横向拖拽翻页；横向滚轮和拖拽都会驱动整页横向轨道，释放后只提交一次翻页，首尾页使用阻尼。
+- 顶部居中液态玻璃风格搜索框，包含放大镜图标、清除按钮和舒适内边距；搜索框右侧提供弱化设置菜单入口，菜单选中项左侧保留独立勾选列；初始进入不主动显示输入光标，用户点击搜索框或直接输入文字后再聚焦并实时过滤。
+- 底部仅显示分页圆点，支持点击跳页、鼠标/触控板横向滚轮翻页和横向拖拽翻页；横向滚轮和拖拽都会驱动整页横向轨道，慢速滑动期间使用较长结束窗口避免过早结算，释放后按页面进度回落到当前页或进入相邻页，首尾页使用阻尼。
+- 自定义排序拖拽时使用横向插入槽预览和轻微让位反馈，不让被拖拽或刚操作过的 app 图标变暗。
 - `Esc`、全局快捷键或点击空白模糊背景隐藏 OpenLaunch。
 
 ## 常用命令
@@ -125,10 +126,17 @@ sudo installer -pkg .build/dist/OpenLaunch-0.1.0.pkg -target /
 - 遵守 Apple Human Interface Guidelines，优先使用系统材质、系统字体、系统图标和克制控件。
 - 用户可见名称使用 `OpenLaunch`，仓库或目录可使用 `open-launch`；不要把连字符形式展示为 app 名。
 - 默认排序是添加时间从旧到新，扫描器必须优先读取 Spotlight 添加日期。
+- 最近打开排序是从旧到新，未打开应用在前，刚打开的应用排在最后；OpenLaunch 启动和系统应用激活都应更新最近打开记录。
+- 自定义排序入口位于主界面设置菜单和状态栏右键菜单的“排序方式 -> 自定义排序（拖动图标）”，进入后通过拖动应用图标调整顺序并持久化；拖拽预览以 Dock 式插入槽表达目标位置。
+- 默认扫描路径包括 `/Applications`、`~/Applications`、`/System/Applications`、`/System/Cryptexes/App/System/Applications` 和公开 CoreServices 应用目录；扫描结果应保存真实 bundle 路径，避免 Safari 这类符号链接应用显示别名角标。
 - 默认扫描器可以使用 Spotlight 获取候选应用，必须排除系统 framework、daemon、updater、模板 app 等内部 bundle；只过滤 `LSBackgroundOnly`，保留有 UI 或菜单栏入口的 `LSUIElement` 应用。
 - Dock 或其他应用激活时必须隐藏覆盖层，避免用户点击 Dock app 后仍停留在 OpenLaunch 全屏界面。
 - 覆盖窗口不得长期裁掉底部区域作为 Dock 触发带；自动隐藏 Dock 应通过窗口层级低于 Dock 来浮出。
 - 不使用 SwiftUI `WindowGroup` 承载主启动器窗口，主窗口必须由 AppKit 显式创建并禁用窗口恢复。
 - 无边框主窗口必须允许成为 key/main window，否则搜索输入和 `Esc` 退出会不稳定。
-- 不使用 `hideMenuBar` 强行隐藏菜单栏；只允许使用 `autoHideMenuBar` 维持类似系统启动台的顶部隐藏观感。
+- 构建产物不声明 `LSUIElement`，避免 LaunchServices 把开发构建当作后台 agent 而无法可靠进入当前 Space；覆盖层可见期间保持 `.regular` 前台身份，让系统栏隐藏策略生效，覆盖层隐藏后再切回 `.accessory`。
+- 展示阶段需要短暂忽略系统激活回弹产生的 `NSWorkspace.didActivateApplication`，避免刚打开就被误判为用户切换 app 而隐藏。
+- OpenLaunch 不参与 macOS secure window restoration；如果开发阶段出现“上次意外退出，是否重新打开窗口”的系统弹窗，应选择“不重新打开”清掉历史崩溃恢复状态。
+- `hideMenuBar` 在 macOS 26.5 上必须同时搭配 `hideDock`，否则 AppKit 会抛 `NSInvalidArgumentException`；为保留 Dock 边缘触发能力，覆盖层可见期间只使用 `autoHideMenuBar` / `autoHideDock`，并通过透明顶部触发拦截层避免菜单栏浮出。
+- 覆盖层可见期间临时隐藏 OpenLaunch 状态栏项，避免系统菜单栏被触发时出现 OpenLaunch 图标或空白占位；覆盖层隐藏后恢复状态栏入口。
 - 状态栏图标使用 OpenLaunch 自有网格符号设计，不直接复制其他应用图形。

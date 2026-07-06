@@ -102,6 +102,10 @@ final class AppState: ObservableObject {
 
     /// 更新排序模式并立即保存。
     func updateSortMode(_ sortMode: AppSortMode) {
+        if sortMode == .custom {
+            ensureCustomOrder()
+        }
+
         settings.sortMode = sortMode
         saveSettings()
     }
@@ -117,6 +121,36 @@ final class AppState: ObservableObject {
     func updateGridDensity(_ density: GridDensity) {
         settings.gridDensity = density
         currentPage = 0
+        saveSettings()
+    }
+
+    /// 打开启动器时重置临时搜索状态，避免上次焦点或筛选残留。
+    func resetSearchSession() {
+        searchText = ""
+        currentPage = 0
+    }
+
+    /// 在自定义排序模式下移动应用，并把结果持久化为稳定顺序。
+    func moveAppForCustomSort(draggedAppID: String, targetAppID: String) {
+        guard settings.sortMode == .custom,
+              searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              draggedAppID != targetAppID else {
+            return
+        }
+
+        ensureCustomOrder()
+
+        let orderedAppIDs = CustomAppOrder.movedOrder(
+            currentAppIDs: sortedApps.map(\.stableKey),
+            existingOrder: settings.customOrder,
+            draggedAppID: draggedAppID,
+            targetAppID: targetAppID
+        )
+        guard orderedAppIDs != sortedApps.map(\.stableKey) else {
+            return
+        }
+
+        settings.customOrder = CustomAppOrder.dictionary(from: orderedAppIDs)
         saveSettings()
     }
 
@@ -167,6 +201,29 @@ final class AppState: ObservableObject {
         goToPage(0)
     }
 
+    /// 记录系统中被激活的应用，让最近打开排序能覆盖 Dock 或其它入口打开的应用。
+    func recordOpenedApplication(bundleIdentifier: String?, path: String?) {
+        guard let index = apps.firstIndex(where: { app in
+            if let bundleIdentifier, app.bundleIdentifier == bundleIdentifier {
+                return true
+            }
+
+            if let path {
+                return app.path == path
+            }
+
+            return false
+        }) else {
+            if let bundleIdentifier, !bundleIdentifier.isEmpty {
+                recentOpenDates[bundleIdentifier] = Date()
+                try? store.saveRecentOpenDates(recentOpenDates)
+            }
+            return
+        }
+
+        recordOpenedApp(at: index)
+    }
+
     /// 通过系统工作区启动应用，成功后记录最近打开时间并隐藏 OpenLaunch。
     func launch(_ app: LaunchableApp) {
         let appURL = URL(fileURLWithPath: app.path, isDirectory: true)
@@ -183,12 +240,12 @@ final class AppState: ObservableObject {
                     return
                 }
 
-                let now = Date()
-                self.recentOpenDates[app.stableKey] = now
                 if let index = self.apps.firstIndex(where: { $0.stableKey == app.stableKey }) {
-                    self.apps[index].lastOpenedDate = now
+                    self.recordOpenedApp(at: index)
+                } else {
+                    self.recentOpenDates[app.stableKey] = Date()
+                    try? self.store.saveRecentOpenDates(self.recentOpenDates)
                 }
-                try? self.store.saveRecentOpenDates(self.recentOpenDates)
                 OpenLaunchWindowActions.hide()
             }
         }
@@ -200,5 +257,23 @@ final class AppState: ObservableObject {
         } catch {
             errorMessage = "无法保存设置：\(error.localizedDescription)"
         }
+    }
+
+    private func recordOpenedApp(at index: Int) {
+        let now = Date()
+        let stableKey = apps[index].stableKey
+        recentOpenDates[stableKey] = now
+        apps[index].lastOpenedDate = now
+        try? store.saveRecentOpenDates(recentOpenDates)
+    }
+
+    private func ensureCustomOrder() {
+        let currentAppIDs = sortedApps.map(\.stableKey)
+        settings.customOrder = CustomAppOrder.dictionary(
+            from: CustomAppOrder.normalizedOrder(
+                currentAppIDs: currentAppIDs,
+                existingOrder: settings.customOrder
+            )
+        )
     }
 }

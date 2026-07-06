@@ -1,4 +1,5 @@
 import AppKit
+import OpenLaunchCore
 import QuartzCore
 
 /// OpenLaunch 覆盖窗口的通用操作，避免依赖对无边框全屏窗口不稳定的应用隐藏。
@@ -43,6 +44,13 @@ enum OpenLaunchWindowActions {
         window.ignoresMouseEvents = false
         var options = NSApp.presentationOptions
         options.remove(.autoHideMenuBar)
+        options.remove(.hideMenuBar)
+        options.remove(.autoHideDock)
+        options.remove(.hideDock)
         NSApp.presentationOptions = options
+        if LauncherChromePolicy.returnsToAccessoryAfterHiding {
+            NSApp.setActivationPolicy(.accessory)
+        }
+        NotificationCenter.default.post(name: .openLaunchDidHide, object: nil)
     }
 }
