@@ -23,7 +23,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var scrollPageVerticalTranslation: CGFloat = 0
     private var scrollPagingFinishTask: Task<Void, Never>?
     private var lastStatusItemActionTimestamp = 0.0
-    private var statusMenuNeedsRefresh = false
     private var statusMenuWasPresentedFromVisibleLauncher = false
     private var restoreLauncherInputTask: Task<Void, Never>?
     private var initialLaunchPresentationWorkItem: DispatchWorkItem?
@@ -99,28 +98,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         state.scanApplications()
     }
 
-    @objc private func updateSortMode(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String,
-              let sortMode = AppSortMode(rawValue: rawValue) else {
-            return
-        }
-
-        state.updateSortMode(sortMode)
-        resetScrollPagingGesture()
-        scheduleStatusMenuRefresh()
-    }
-
-    @objc private func updateDisplayMode(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String,
-              let displayMode = DisplayMode(rawValue: rawValue) else {
-            return
-        }
-
-        state.updateDisplayMode(displayMode)
-        resetScrollPagingGesture()
-        scheduleStatusMenuRefresh()
-    }
-
     @objc private func quit() {
         NSApp.terminate(nil)
     }
@@ -143,66 +120,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusMenu = makeStatusMenu()
     }
 
-    private func updateStatusItemMenu() {
-        statusMenu = makeStatusMenu()
-    }
-
     private func makeStatusMenu() -> NSMenu {
         let menu = NSMenu()
         menu.delegate = self
-        menu.addItem(NSMenuItem(title: "打开/关闭 OpenLaunch", action: #selector(toggleOpenLaunch), keyEquivalent: ""))
-        menu.addItem(NSMenuItem.separator())
-
-        let sortMenuItem = NSMenuItem(title: "排序方式", action: nil, keyEquivalent: "")
-        let sortMenu = NSMenu()
-
-        let sortModeItems: [(String, AppSortMode)] = [
-            ("添加时间", .addedDate),
-            ("名称", .name),
-            ("最近打开", .lastOpened),
-            ("自定义排序（拖动图标）", .custom)
-        ]
-
-        for mode in sortModeItems {
-            let item = NSMenuItem(
-                title: mode.0,
-                action: #selector(updateSortMode(_:)),
-                keyEquivalent: ""
-            )
-            item.representedObject = mode.1.rawValue
-            item.target = self
-            item.state = state.settings.sortMode == mode.1 ? .on : .off
-            sortMenu.addItem(item)
-        }
-
-        let displayMenuItem = NSMenuItem(title: "显示模式", action: nil, keyEquivalent: "")
-        let displayMenu = NSMenu()
-        let displayModeItems: [(String, DisplayMode)] = [
-            ("分页", .paged),
-            ("滚动", .scroll)
-        ]
-
-        for mode in displayModeItems {
-            let item = NSMenuItem(
-                title: mode.0,
-                action: #selector(updateDisplayMode(_:)),
-                keyEquivalent: ""
-            )
-            item.representedObject = mode.1.rawValue
-            item.target = self
-            item.state = state.settings.displayMode == mode.1 ? .on : .off
-            displayMenu.addItem(item)
-        }
-
-        sortMenuItem.submenu = sortMenu
-        displayMenuItem.submenu = displayMenu
-        menu.addItem(sortMenuItem)
-        menu.addItem(displayMenuItem)
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "重新扫描应用", action: #selector(rescanApplications), keyEquivalent: ""))
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "退出 OpenLaunch", action: #selector(quit), keyEquivalent: "q"))
+        StatusMenuPolicy.items
+            .map(statusMenuItem)
+            .forEach(menu.addItem)
         return menu
+    }
+
+    private func statusMenuItem(for policyItem: StatusMenuPolicy.Item) -> NSMenuItem {
+        let item = NSMenuItem(title: policyItem.title, action: selector(for: policyItem.action), keyEquivalent: "")
+        item.target = self
+        if policyItem.action == .quit {
+            item.keyEquivalent = "q"
+        }
+        return item
+    }
+
+    private func selector(for action: StatusMenuPolicy.Action) -> Selector {
+        switch action {
+        case .rescanApplications:
+            return #selector(rescanApplications)
+        case .quit:
+            return #selector(quit)
+        }
     }
 
     nonisolated func menuDidClose(_ menu: NSMenu) {
@@ -250,23 +192,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         sender.performClick(nil)
     }
 
-    private func scheduleStatusMenuRefresh() {
-        statusMenuNeedsRefresh = true
-        clearStatusItemHighlightAfterMenuSettles()
-    }
-
-    private func refreshStatusMenuIfNeeded() {
-        guard statusMenuNeedsRefresh else {
-            return
-        }
-
-        statusMenuNeedsRefresh = false
-        updateStatusItemMenu()
-    }
-
     private func finishStatusMenuInteraction() {
         statusItem?.menu = nil
-        refreshStatusMenuIfNeeded()
         clearStatusItemHighlightAfterMenuSettles()
         restoreLauncherInputAfterStatusMenuIfNeeded()
     }
