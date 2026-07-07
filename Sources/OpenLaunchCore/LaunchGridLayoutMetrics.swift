@@ -20,6 +20,7 @@ public enum LaunchGridLayoutMetrics {
     public static let searchHitHeight: CGFloat = 58
     public static let searchControlHeight: CGFloat = 44
     public static let searchTextFieldHeight: CGFloat = 22
+    public static let headerControlSpacing: CGFloat = 12
     public static let dockRevealInset: CGFloat = 24
     public static let pageDragThreshold: CGFloat = 28
     public static let pageGestureMinimumDistance: CGFloat = 4
@@ -69,10 +70,22 @@ public enum LaunchGridLayoutMetrics {
 
     /// 搜索框附近区域，避免点击搜索框或其焦点环时触发背景退出。
     public static func searchHitFrame(windowSize: CGSize) -> CGRect {
-        CGRect(
-            x: (windowSize.width - searchHitWidth) / 2,
+        let headerWidth = searchHitWidth + headerControlSpacing + searchControlHeight
+        return CGRect(
+            x: (windowSize.width - headerWidth) / 2,
             y: searchTopPadding - 18,
             width: searchHitWidth,
+            height: searchHitHeight
+        )
+    }
+
+    /// 设置按钮附近区域，避免点击设置菜单入口时触发背景退出。
+    public static func settingsHitFrame(windowSize: CGSize) -> CGRect {
+        let searchFrame = searchHitFrame(windowSize: windowSize)
+        return CGRect(
+            x: searchFrame.maxX + headerControlSpacing,
+            y: searchFrame.minY,
+            width: searchControlHeight,
             height: searchHitHeight
         )
     }
@@ -85,6 +98,35 @@ public enum LaunchGridLayoutMetrics {
             width: footerHitWidth,
             height: footerHeight + 18
         )
+    }
+}
+
+/// 将窗口内点击解释为保留启动器或点击空白退出，作为 SwiftUI 透明层点击的兜底。
+public enum LauncherBlankClickInterpreter {
+    public enum Action: Equatable {
+        case keepLauncher
+        case hideLauncher
+    }
+
+    public static func action(
+        at point: CGPoint,
+        windowSize: CGSize,
+        settings: OpenLaunchSettings,
+        displayedAppCount: Int
+    ) -> Action {
+        if LaunchGridLayoutMetrics.searchHitFrame(windowSize: windowSize).contains(point)
+            || LaunchGridLayoutMetrics.settingsHitFrame(windowSize: windowSize).contains(point)
+            || LaunchGridLayoutMetrics.footerHitFrame(windowSize: windowSize).contains(point) {
+            return .keepLauncher
+        }
+
+        for index in 0..<max(displayedAppCount, 0) {
+            if LaunchGridLayoutMetrics.tileHitFrame(for: index, windowSize: windowSize, settings: settings).contains(point) {
+                return .keepLauncher
+            }
+        }
+
+        return .hideLauncher
     }
 }
 

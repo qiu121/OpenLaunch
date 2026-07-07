@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusMenuWasPresentedFromVisibleLauncher = false
     private var restoreLauncherInputTask: Task<Void, Never>?
     private var initialLaunchPresentationWorkItem: DispatchWorkItem?
+    private var deferredSearchBlurTask: Task<Void, Never>?
     private var suppressExternalActivationUntil = 0.0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -55,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         scrollPagingFinishTask?.cancel()
         restoreLauncherInputTask?.cancel()
         initialLaunchPresentationWorkItem?.cancel()
+        deferredSearchBlurTask?.cancel()
     }
 
     func applicationDidHide(_ notification: Notification) {
@@ -303,9 +305,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
 
             Task { @MainActor in
+                self.applySearchSessionActions(for: .didHide)
                 self.restoreChromeAfterLauncherHides()
             }
         }
+    }
+
+    private func shouldConsumeLauncherMouseDown(_ event: NSEvent, in window: NSWindow) -> Bool {
+        guard isLauncherWindowVisible(window) else {
+            return false
+        }
+
+        let windowSize = window.contentView?.bounds.size ?? window.frame.size
+        let point = CGPoint(
+            x: event.locationInWindow.x,
+            y: windowSize.height - event.locationInWindow.y
+        )
+
+        guard state.settings.displayMode == .paged else {
+            return false
+        }
+
+        let action = LauncherBlankClickInterpreter.action(
+            at: point,
+            windowSize: windowSize,
+            settings: state.settings,
+            displayedAppCount: state.currentPageApps.count
+        )
+
+        guard action == .hideLauncher else {
+            return false
+        }
+
+        OpenLaunchWindowActions.hide()
+        return true
+    }
+
+    private func handleLauncherMouseUpAfterDispatch(_ event: NSEvent, in window: NSWindow) {
+        guard isLauncherWindowVisible(window) else {
+            return
+        }
+
+        let windowSize = window.contentView?.bounds.size ?? window.frame.size
+        let point = CGPoint(
+            x: event.locationInWindow.x,
+            y: windowSize.height - event.locationInWindow.y
+        )
+
+        if state.settings.displayMode == .paged {
+            let action = LauncherBlankClickInterpreter.action(
+                at: point,
+                windowSize: windowSize,
+                settings: state.settings,
+                displayedAppCount: state.currentPageApps.count
+            )
+            if action == .hideLauncher {
+                OpenLaunchWindowActions.hide()
+            }
+            return
+        }
+
+        guard !LaunchGridLayoutMetrics.searchHitFrame(windowSize: windowSize).contains(point),
+              !LaunchGridLayoutMetrics.settingsHitFrame(windowSize: windowSize).contains(point) else {
+            return
+        }
+
+        OpenLaunchWindowActions.hide()
     }
 
     private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
@@ -446,6 +511,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             defer: false
         )
         window.title = "OpenLaunch"
+        window.shouldConsumeMouseDown = { [weak self] event, window in
+            guard let self else {
+                return false
+            }
+
+            return self.shouldConsumeLauncherMouseDown(event, in: window)
+        }
+        window.didDispatchMouseUp = { [weak self] event, window in
+            guard let self else {
+                return
+            }
+
+            self.handleLauncherMouseUpAfterDispatch(event, in: window)
+        }
         window.contentView = NSHostingView(rootView: ContentView(state: state))
         launchWindow = window
         scheduleInitialLaunchPresentation(for: window)
@@ -485,16 +564,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         resetScrollPagingGesture()
-        state.resetSearchSession()
+        applySearchSessionActions(for: .willShow)
         state.backgroundImage = launchWindowController.captureBackgroundImage(for: window)
         prepareChromeForLauncherPresentation(on: launchWindowController.targetScreen(for: window))
         launchWindowController.show(window)
         if LauncherChromePolicy.returnsToAccessoryImmediatelyAfterPresentation {
             NSApp.setActivationPolicy(.accessory)
         }
-        window.makeFirstResponder(nil)
-        NotificationCenter.default.post(name: .openLaunchBlurSearch, object: nil)
+        applySearchSessionActions(for: .didShow)
         configureEscapeHotkey()
+    }
+
+    private func applySearchSessionActions(for event: LauncherSearchSessionPolicy.Event) {
+        for action in LauncherSearchSessionPolicy.actions(for: event) {
+            switch action {
+            case .resetSearchSession:
+                state.resetSearchSession()
+            case .blurSearchField:
+                blurSearchField()
+            case .deferredBlurSearchField:
+                deferredSearchBlurTask?.cancel()
+                deferredSearchBlurTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 80_000_000)
+                    self?.blurSearchField()
+                }
+            }
+        }
+    }
+
+    private func blurSearchField() {
+        openLaunchWindow?.makeFirstResponder(nil)
+        NotificationCenter.default.post(name: .openLaunchBlurSearch, object: nil)
     }
 
     private func handleWorkspaceActivation(_ notification: Notification) {

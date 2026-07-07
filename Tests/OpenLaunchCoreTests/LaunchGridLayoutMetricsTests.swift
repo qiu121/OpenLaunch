@@ -30,6 +30,61 @@ final class LaunchGridLayoutMetricsTests: XCTestCase {
         XCTAssertEqual(LaunchGridLayoutMetrics.searchTextFieldHeight, 22)
     }
 
+    func testLauncherBlankClickInterpreterKeepsInteractiveRegions() {
+        let windowSize = CGSize(width: 1512, height: 982)
+        let settings = OpenLaunchSettings.default
+        let tileFrame = LaunchGridLayoutMetrics.tileHitFrame(for: 0, windowSize: windowSize, settings: settings)
+
+        XCTAssertEqual(
+            LauncherBlankClickInterpreter.action(
+                at: CGPoint(x: tileFrame.midX, y: tileFrame.midY),
+                windowSize: windowSize,
+                settings: settings,
+                displayedAppCount: 35
+            ),
+            .keepLauncher
+        )
+        XCTAssertEqual(
+            LauncherBlankClickInterpreter.action(
+                at: CGPoint(x: LaunchGridLayoutMetrics.searchHitFrame(windowSize: windowSize).midX, y: LaunchGridLayoutMetrics.searchHitFrame(windowSize: windowSize).midY),
+                windowSize: windowSize,
+                settings: settings,
+                displayedAppCount: 35
+            ),
+            .keepLauncher
+        )
+        XCTAssertEqual(
+            LauncherBlankClickInterpreter.action(
+                at: CGPoint(x: LaunchGridLayoutMetrics.settingsHitFrame(windowSize: windowSize).midX, y: LaunchGridLayoutMetrics.settingsHitFrame(windowSize: windowSize).midY),
+                windowSize: windowSize,
+                settings: settings,
+                displayedAppCount: 35
+            ),
+            .keepLauncher
+        )
+        XCTAssertEqual(
+            LauncherBlankClickInterpreter.action(
+                at: CGPoint(x: LaunchGridLayoutMetrics.footerHitFrame(windowSize: windowSize).midX, y: LaunchGridLayoutMetrics.footerHitFrame(windowSize: windowSize).midY),
+                windowSize: windowSize,
+                settings: settings,
+                displayedAppCount: 35
+            ),
+            .keepLauncher
+        )
+    }
+
+    func testLauncherBlankClickInterpreterHidesForBlankPagedArea() {
+        XCTAssertEqual(
+            LauncherBlankClickInterpreter.action(
+                at: CGPoint(x: 36, y: 420),
+                windowSize: CGSize(width: 1512, height: 982),
+                settings: .default,
+                displayedAppCount: 35
+            ),
+            .hideLauncher
+        )
+    }
+
     func testHorizontalSwipeDirectionIgnoresVerticalMovement() {
         XCTAssertEqual(PageSwipeInterpreter.direction(deltaX: -18, deltaY: 4), .next)
         XCTAssertEqual(PageSwipeInterpreter.direction(deltaX: 18, deltaY: 4), .previous)
@@ -225,6 +280,25 @@ final class LaunchGridLayoutMetricsTests: XCTestCase {
         XCTAssertEqual(StatusItemClickInterpreter.action(isSecondaryClick: false, isControlPressed: false), .showLauncher)
         XCTAssertEqual(StatusItemClickInterpreter.action(isSecondaryClick: true, isControlPressed: false), .showMenu)
         XCTAssertEqual(StatusItemClickInterpreter.action(isSecondaryClick: false, isControlPressed: true), .showMenu)
+    }
+
+    func testStatusMenuPolicyKeepsRightClickMenuMinimal() {
+        XCTAssertEqual(StatusMenuPolicy.items.map(\.title), ["重新扫描", "退出"])
+        XCTAssertEqual(StatusMenuPolicy.items.map(\.action), [.rescanApplications, .quit])
+    }
+
+    func testSearchSessionPolicyResetsAndBlursWhenLauncherHides() {
+        XCTAssertEqual(
+            LauncherSearchSessionPolicy.actions(for: .didHide),
+            [.resetSearchSession, .blurSearchField]
+        )
+    }
+
+    func testSearchSessionPolicyBlursAgainAfterLauncherShows() {
+        XCTAssertEqual(
+            LauncherSearchSessionPolicy.actions(for: .didShow),
+            [.blurSearchField, .deferredBlurSearchField]
+        )
     }
 
     func testRestorationPolicyFindsSwiftUISavedLauncherFrameKeys() {

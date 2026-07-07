@@ -239,6 +239,13 @@ struct ContentView: View {
                 .padding(.vertical, 18)
         }
         .scrollIndicators(.hidden)
+        .background {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    OpenLaunchWindowActions.hide()
+                }
+        }
     }
 
     private var appGridContent: some View {

@@ -105,6 +105,7 @@ final class OpenLaunchSearchField: NSTextField {
     var onEscape: (() -> Void)?
     private var focusObserver: NSObjectProtocol?
     private var blurObserver: NSObjectProtocol?
+    private var allowsExplicitFocus = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -129,6 +130,10 @@ final class OpenLaunchSearchField: NSTextField {
         focusAndMoveInsertionPointToEnd()
         super.mouseDown(with: event)
         updateInsertionPointAppearance()
+    }
+
+    override var acceptsFirstResponder: Bool {
+        allowsExplicitFocus
     }
 
     override func becomeFirstResponder() -> Bool {
@@ -188,11 +193,13 @@ final class OpenLaunchSearchField: NSTextField {
     }
 
     private func focusAndMoveInsertionPointToEnd() {
+        allowsExplicitFocus = true
         window?.makeFirstResponder(self)
         moveInsertionPointToEnd()
     }
 
     private func resignOpenLaunchFocus() {
+        allowsExplicitFocus = false
         abortEditing()
         if isOpenLaunchFirstResponder {
             window?.makeFirstResponder(nil)
