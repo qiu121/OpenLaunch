@@ -119,58 +119,11 @@ struct ContentView: View {
     }
 
     private var settingsMenu: some View {
-        Menu {
-            Section("排序方式") {
-                Picker("排序方式", selection: sortModeSelection) {
-                    ForEach(AppSortMode.allCases, id: \.self) { sortMode in
-                        Label(sortMode.menuTitle, systemImage: sortMode.menuSymbolName)
-                            .tag(sortMode)
-                    }
-                }
-                .pickerStyle(.inline)
-            }
-
-            Section("显示模式") {
-                Picker("显示模式", selection: displayModeSelection) {
-                    ForEach(DisplayMode.allCases, id: \.self) { displayMode in
-                        Label(displayMode.menuTitle, systemImage: displayMode.menuSymbolName)
-                            .tag(displayMode)
-                    }
-                }
-                .pickerStyle(.inline)
-            }
-
-            Divider()
-
-            Button {
-                state.scanApplications()
-            } label: {
-                Label("重新扫描", systemImage: "arrow.clockwise")
-            }
-        } label: {
-            Image(systemName: "slider.horizontal.3")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.78))
-                .frame(width: LaunchGridLayoutMetrics.searchControlHeight, height: LaunchGridLayoutMetrics.searchControlHeight)
-                .background(settingsGlassBackground)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
+        SettingsMenuButton(state: state)
+            .frame(width: LaunchGridLayoutMetrics.searchControlHeight, height: LaunchGridLayoutMetrics.searchControlHeight)
+            .background(settingsGlassBackground)
+            .contentShape(Circle())
         .help("设置")
-    }
-
-    private var sortModeSelection: Binding<AppSortMode> {
-        Binding(
-            get: { state.settings.sortMode },
-            set: { state.updateSortMode($0) }
-        )
-    }
-
-    private var displayModeSelection: Binding<DisplayMode> {
-        Binding(
-            get: { state.settings.displayMode },
-            set: { state.updateDisplayMode($0) }
-        )
     }
 
     private var searchGlassBackground: some View {
@@ -618,30 +571,138 @@ private struct AppIconImage: View {
     }
 }
 
-private extension AppSortMode {
-    var menuTitle: String {
-        switch self {
-        case .addedDate:
-            return "添加时间"
-        case .name:
-            return "名称"
-        case .lastOpened:
-            return "最近打开"
-        case .custom:
-            return "自定义排序"
-        }
+private struct SettingsMenuButton: NSViewRepresentable {
+    @ObservedObject var state: AppState
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(state: state)
     }
 
-    var menuSymbolName: String {
-        switch self {
-        case .addedDate:
-            return "calendar.badge.plus"
-        case .name:
-            return "textformat"
-        case .lastOpened:
-            return "clock.arrow.circlepath"
-        case .custom:
-            return "arrow.up.arrow.down.square"
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton()
+        button.isBordered = false
+        button.bezelStyle = .regularSquare
+        button.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "设置")
+        button.imageScaling = .scaleProportionallyDown
+        button.contentTintColor = NSColor.white.withAlphaComponent(0.78)
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.showMenu(_:))
+        button.focusRingType = .none
+        button.toolTip = "设置"
+        return button
+    }
+
+    func updateNSView(_ nsView: NSButton, context: Context) {
+        context.coordinator.state = state
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var state: AppState
+
+        init(state: AppState) {
+            self.state = state
+        }
+
+        @objc func showMenu(_ sender: NSButton) {
+            let menu = makeMenu()
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+        }
+
+        @objc private func updateSortSelection(_ sender: NSMenuItem) {
+            guard let selectionID = sender.representedObject as? String,
+                  let sortSelection = AppSortSelection.option(withID: selectionID) else {
+                return
+            }
+
+            state.updateSortSelection(sortSelection)
+        }
+
+        @objc private func updateDisplayMode(_ sender: NSMenuItem) {
+            guard let rawValue = sender.representedObject as? String,
+                  let displayMode = DisplayMode(rawValue: rawValue) else {
+                return
+            }
+
+            state.updateDisplayMode(displayMode)
+        }
+
+        @objc private func rescanApplications() {
+            state.scanApplications()
+        }
+
+        private func makeMenu() -> NSMenu {
+            let menu = NSMenu()
+            addSortingItems(to: menu)
+            menu.addItem(.separator())
+            addDisplayItems(to: menu)
+            menu.addItem(.separator())
+            menu.addItem(NSMenuItem(title: "重新扫描", action: #selector(rescanApplications), keyEquivalent: ""))
+            menu.items.last?.target = self
+            return menu
+        }
+
+        private func addSortingItems(to menu: NSMenu) {
+            let headerItem = NSMenuItem(title: "排序方式", action: nil, keyEquivalent: "")
+            headerItem.isEnabled = false
+            menu.addItem(headerItem)
+
+            let currentSortSelection = AppSortSelection.current(for: state.settings)
+            for group in AppSortMenuLayout.groups {
+                if group.options.count == 1, let option = group.options.first {
+                    menu.addItem(sortMenuItem(for: option, currentSelection: currentSortSelection))
+                    continue
+                }
+
+                let groupItem = NSMenuItem(title: group.title, action: nil, keyEquivalent: "")
+                groupItem.state = state.settings.sortMode == group.mode ? .on : .off
+                groupItem.image = NSImage(systemSymbolName: group.systemImageName, accessibilityDescription: group.title)
+
+                let groupMenu = NSMenu()
+                for option in group.options {
+                    groupMenu.addItem(sortMenuItem(for: option, currentSelection: currentSortSelection))
+                }
+                groupItem.submenu = groupMenu
+                menu.addItem(groupItem)
+            }
+        }
+
+        private func addDisplayItems(to menu: NSMenu) {
+            let headerItem = NSMenuItem(title: "显示模式", action: nil, keyEquivalent: "")
+            headerItem.isEnabled = false
+            menu.addItem(headerItem)
+
+            let displayModeItems: [(String, DisplayMode)] = [
+                ("分页", .paged),
+                ("滚动", .scroll)
+            ]
+
+            for mode in displayModeItems {
+                let item = NSMenuItem(title: mode.0, action: #selector(updateDisplayMode(_:)), keyEquivalent: "")
+                item.representedObject = mode.1.rawValue
+                item.target = self
+                item.state = state.settings.displayMode == mode.1 ? .on : .off
+                item.image = NSImage(systemSymbolName: systemImageName(for: mode.1), accessibilityDescription: mode.0)
+                menu.addItem(item)
+            }
+        }
+
+        private func sortMenuItem(for option: AppSortSelection, currentSelection: AppSortSelection) -> NSMenuItem {
+            let item = NSMenuItem(title: option.title, action: #selector(updateSortSelection(_:)), keyEquivalent: "")
+            item.representedObject = option.id
+            item.target = self
+            item.state = currentSelection == option ? .on : .off
+            item.image = NSImage(systemSymbolName: option.systemImageName, accessibilityDescription: option.title)
+            return item
+        }
+
+        private func systemImageName(for displayMode: DisplayMode) -> String {
+            switch displayMode {
+            case .paged:
+                return "square.grid.3x3"
+            case .scroll:
+                return "scroll"
+            }
         }
     }
 }

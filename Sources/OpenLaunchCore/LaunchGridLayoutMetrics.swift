@@ -109,9 +109,11 @@ public enum LauncherChromePolicy {
     public static let externalActivationSuppressionAfterPresentationNanoseconds: UInt64 = 500_000_000
 }
 
-/// 设置菜单策略：使用系统 Picker 生成原生勾选列，避免自定义菜单 label 触发 SwiftUI 菜单手势异常。
+/// 设置菜单策略：使用 AppKit 原生菜单，避免 SwiftUI 菜单行吞掉功能图标。
 public enum SettingsMenuPolicy {
-    public static let usesNativePickerSelection = true
+    public static let usesNativePickerSelection = false
+    public static let showsSortGroupsInRootMenu = true
+    public static let usesExplicitMenuSeparators = true
 }
 
 /// 将触控板横向滑动或鼠标横向滚轮解释成分页方向。

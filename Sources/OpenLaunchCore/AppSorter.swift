@@ -6,15 +6,15 @@ public enum AppSorter {
     public static func sorted(_ apps: [LaunchableApp], using settings: OpenLaunchSettings) -> [LaunchableApp] {
         let visibleApps = apps.filter { !$0.isHidden }
 
-        switch settings.sortMode {
+        let sortedApps = switch settings.sortMode {
         case .addedDate:
-            return visibleApps.sorted(by: compareByAddedDate)
+            visibleApps.sorted(by: compareByAddedDate)
         case .name:
-            return visibleApps.sorted(by: compareByName)
+            visibleApps.sorted(by: compareByName)
         case .lastOpened:
-            return visibleApps.sorted(by: compareByLastOpened)
+            visibleApps.sorted(by: compareByLastOpened)
         case .custom:
-            return visibleApps.sorted { lhs, rhs in
+            visibleApps.sorted { lhs, rhs in
                 let lhsOrder = settings.customOrder[lhs.stableKey]
                 let rhsOrder = settings.customOrder[rhs.stableKey]
 
@@ -30,6 +30,12 @@ public enum AppSorter {
                 }
             }
         }
+
+        guard settings.sortMode != .custom, settings.sortDirection == .reverse else {
+            return sortedApps
+        }
+
+        return sortedApps.reversed()
     }
 
     private static func compareByAddedDate(_ lhs: LaunchableApp, _ rhs: LaunchableApp) -> Bool {

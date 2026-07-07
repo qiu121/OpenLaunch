@@ -22,6 +22,7 @@ final class SettingsStoreTests: XCTestCase {
         let settings = try store.loadSettings()
 
         XCTAssertEqual(settings.sortMode, .addedDate)
+        XCTAssertEqual(settings.sortDirection, .forward)
         XCTAssertEqual(settings.displayMode, .paged)
         XCTAssertTrue(settings.showLabels)
     }
@@ -44,6 +45,26 @@ final class SettingsStoreTests: XCTestCase {
         let loaded = try store.loadSettings()
 
         XCTAssertEqual(loaded, expected)
+    }
+
+    func testLegacySettingsWithoutSortDirectionUseDefaultForwardOrder() throws {
+        let legacySettingsJSON = """
+        {
+          "customOrder" : {},
+          "displayMode" : "paged",
+          "gridDensity" : "medium",
+          "showLabels" : true,
+          "sortMode" : "addedDate"
+        }
+        """
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        try legacySettingsJSON.data(using: .utf8)?.write(to: temporaryDirectory.appendingPathComponent("settings.json"))
+        let store = SettingsStore(applicationSupportDirectory: temporaryDirectory)
+
+        let settings = try store.loadSettings()
+
+        XCTAssertEqual(settings.sortMode, .addedDate)
+        XCTAssertEqual(settings.sortDirection, .forward)
     }
 
     func testRecentOpenDatesRoundTrip() throws {

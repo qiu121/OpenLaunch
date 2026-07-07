@@ -110,6 +110,34 @@ final class AppState: ObservableObject {
         saveSettings()
     }
 
+    /// 更新完整排序选项；普通排序同时保存方式和方向，自定义排序只保存拖拽顺序。
+    func updateSortSelection(_ selection: AppSortSelection) {
+        if selection.mode == .custom {
+            ensureCustomOrder()
+            settings.sortMode = .custom
+            settings.sortDirection = .forward
+        } else {
+            settings.sortMode = selection.mode
+            settings.sortDirection = selection.direction ?? .forward
+        }
+
+        currentPage = 0
+        saveSettings()
+    }
+
+    /// 更新排序方向并立即保存；自定义排序始终使用用户拖拽顺序。
+    func updateSortDirection(_ sortDirection: AppSortDirection) {
+        guard settings.sortMode != .custom else {
+            settings.sortDirection = .forward
+            saveSettings()
+            return
+        }
+
+        settings.sortDirection = sortDirection
+        currentPage = 0
+        saveSettings()
+    }
+
     /// 更新显示模式并立即保存。
     func updateDisplayMode(_ displayMode: DisplayMode) {
         settings.displayMode = displayMode

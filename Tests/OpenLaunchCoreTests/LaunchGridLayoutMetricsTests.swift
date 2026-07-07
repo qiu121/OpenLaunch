@@ -98,8 +98,10 @@ final class LaunchGridLayoutMetricsTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(LauncherChromePolicy.externalActivationSuppressionAfterPresentationNanoseconds, 300_000_000)
     }
 
-    func testSettingsMenuUsesNativePickerSelection() {
-        XCTAssertTrue(SettingsMenuPolicy.usesNativePickerSelection)
+    func testSettingsMenuUsesCustomRowsWithMinimalSectionSeparators() {
+        XCTAssertFalse(SettingsMenuPolicy.usesNativePickerSelection)
+        XCTAssertTrue(SettingsMenuPolicy.showsSortGroupsInRootMenu)
+        XCTAssertTrue(SettingsMenuPolicy.usesExplicitMenuSeparators)
     }
 
     func testPageCarouselTargetDirectionUsesPredictedDrag() {

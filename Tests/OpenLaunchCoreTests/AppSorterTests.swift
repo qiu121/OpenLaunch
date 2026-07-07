@@ -31,6 +31,72 @@ final class AppSorterTests: XCTestCase {
         XCTAssertEqual(sorted.map(\.displayName), ["Arc", "Notes", "Safari"])
     }
 
+    func testAddedDateSortCanUseNewestFirstDirection() {
+        let oldDate = Date(timeIntervalSince1970: 100)
+        let newDate = Date(timeIntervalSince1970: 300)
+        let middleDate = Date(timeIntervalSince1970: 200)
+        let apps = [
+            LaunchableApp(bundleIdentifier: "com.example.old", path: "/Applications/Old.app", displayName: "Old", addedDate: oldDate),
+            LaunchableApp(bundleIdentifier: "com.example.new", path: "/Applications/New.app", displayName: "New", addedDate: newDate),
+            LaunchableApp(bundleIdentifier: "com.example.middle", path: "/Applications/Middle.app", displayName: "Middle", addedDate: middleDate)
+        ]
+
+        let settings = OpenLaunchSettings(
+            sortMode: .addedDate,
+            sortDirection: .reverse,
+            displayMode: .paged,
+            gridDensity: .medium,
+            showLabels: true,
+            hotkey: nil
+        )
+        let sorted = AppSorter.sorted(apps, using: settings)
+
+        XCTAssertEqual(sorted.map(\.displayName), ["New", "Middle", "Old"])
+    }
+
+    func testNameSortCanUseReverseDirection() {
+        let apps = [
+            LaunchableApp(bundleIdentifier: "com.example.safari", path: "/Applications/Safari.app", displayName: "Safari", addedDate: nil),
+            LaunchableApp(bundleIdentifier: "com.example.arc", path: "/Applications/Arc.app", displayName: "Arc", addedDate: nil),
+            LaunchableApp(bundleIdentifier: "com.example.notes", path: "/Applications/Notes.app", displayName: "Notes", addedDate: nil)
+        ]
+
+        let settings = OpenLaunchSettings(
+            sortMode: .name,
+            sortDirection: .reverse,
+            displayMode: .paged,
+            gridDensity: .medium,
+            showLabels: true,
+            hotkey: nil
+        )
+        let sorted = AppSorter.sorted(apps, using: settings)
+
+        XCTAssertEqual(sorted.map(\.displayName), ["Safari", "Notes", "Arc"])
+    }
+
+    func testCustomSortIgnoresSortDirection() {
+        let apps = [
+            LaunchableApp(bundleIdentifier: "com.example.alpha", path: "/Applications/Alpha.app", displayName: "Alpha", addedDate: nil),
+            LaunchableApp(bundleIdentifier: "com.example.beta", path: "/Applications/Beta.app", displayName: "Beta", addedDate: nil)
+        ]
+
+        let settings = OpenLaunchSettings(
+            sortMode: .custom,
+            sortDirection: .reverse,
+            displayMode: .paged,
+            gridDensity: .medium,
+            showLabels: true,
+            hotkey: nil,
+            customOrder: [
+                "com.example.alpha": 0,
+                "com.example.beta": 1
+            ]
+        )
+        let sorted = AppSorter.sorted(apps, using: settings)
+
+        XCTAssertEqual(sorted.map(\.displayName), ["Alpha", "Beta"])
+    }
+
     func testRecentlyOpenedSortFallsBackToNameWhenNoRecentDateExists() {
         let apps = [
             LaunchableApp(bundleIdentifier: "com.example.zed", path: "/Applications/Zed.app", displayName: "Zed", addedDate: nil, lastOpenedDate: nil),
@@ -56,5 +122,27 @@ final class AppSorterTests: XCTestCase {
         let sorted = AppSorter.sorted(apps, using: settings)
 
         XCTAssertEqual(sorted.map(\.displayName), ["Never", "Old", "New"])
+    }
+
+    func testRecentlyOpenedSortCanUseNewestFirstDirection() {
+        let oldOpenDate = Date(timeIntervalSince1970: 100)
+        let newOpenDate = Date(timeIntervalSince1970: 300)
+        let apps = [
+            LaunchableApp(bundleIdentifier: "com.example.never", path: "/Applications/Never.app", displayName: "Never", addedDate: nil, lastOpenedDate: nil),
+            LaunchableApp(bundleIdentifier: "com.example.old", path: "/Applications/Old.app", displayName: "Old", addedDate: nil, lastOpenedDate: oldOpenDate),
+            LaunchableApp(bundleIdentifier: "com.example.new", path: "/Applications/New.app", displayName: "New", addedDate: nil, lastOpenedDate: newOpenDate)
+        ]
+
+        let settings = OpenLaunchSettings(
+            sortMode: .lastOpened,
+            sortDirection: .reverse,
+            displayMode: .paged,
+            gridDensity: .medium,
+            showLabels: true,
+            hotkey: nil
+        )
+        let sorted = AppSorter.sorted(apps, using: settings)
+
+        XCTAssertEqual(sorted.map(\.displayName), ["New", "Old", "Never"])
     }
 }
