@@ -134,6 +134,8 @@ MVP 不做：
 
 - 优先使用 Spotlight 应用索引获取候选 `.app`，补齐 LaunchOS/Launchpad 类工具能看到的系统公开应用。
 - 同时保留文件系统递归扫描作为兜底，避免 Spotlight 索引异常时列表为空。
+- 监听默认扫描目录的文件系统变化；隐藏状态下检测到变化时标记待刷新，下次打开启动台自动重新扫描，启动台可见时在防抖后刷新。
+- 不使用定时轮询作为主刷新机制，避免后台空转和重复扫描。
 - Spotlight 结果使用用户可见路径策略：公开应用目录、用户目录中的独立 `.app`、少量共享支持目录可进入候选；系统 framework、daemon、updater、模板 app 等内部 bundle 不进入候选。
 - 系统 Cryptex 应用目录必须纳入扫描，Safari 等系统应用可能通过 `/Applications` 符号链接指向 Cryptex 中的真实 bundle。
 - 扫描结果保存真实 bundle 路径，避免 `NSWorkspace` 对符号链接应用图标叠加别名角标。

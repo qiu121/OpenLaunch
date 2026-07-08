@@ -24,6 +24,7 @@ final class AppState: ObservableObject {
     private let scanner: AppScanner
     private let store: SettingsStore
     private var recentOpenDates: [String: Date]
+    private var applicationRefreshPolicy = ApplicationRefreshPolicy()
 
     /// 创建应用状态；测试或预览时可传入自定义扫描器和存储位置。
     init(scanner: AppScanner = AppScanner(), store: SettingsStore = SettingsStore()) {
@@ -97,6 +98,32 @@ final class AppState: ObservableObject {
             }
 
             isScanning = false
+        }
+    }
+
+    /// 处理应用目录变化；隐藏时延迟到下次打开，显示时直接刷新列表。
+    func handleApplicationDirectoryChange(isLauncherVisible: Bool) {
+        performApplicationRefreshAction(
+            applicationRefreshPolicy.handleApplicationDirectoryChange(isLauncherVisible: isLauncherVisible)
+        )
+    }
+
+    /// 启动台显示前消费待刷新标记，让后台安装的新软件在下次打开时出现。
+    func refreshApplicationsIfNeededForPresentation() {
+        performApplicationRefreshAction(applicationRefreshPolicy.handleLauncherWillShow())
+    }
+
+    /// 用户手动重新扫描时清除自动刷新待处理状态，并立即扫描。
+    func requestManualApplicationRescan() {
+        performApplicationRefreshAction(applicationRefreshPolicy.handleManualRescan())
+    }
+
+    private func performApplicationRefreshAction(_ action: ApplicationRefreshAction) {
+        switch action {
+        case .rescanImmediately:
+            scanApplications()
+        case .markNeedsRefresh, .noAction:
+            break
         }
     }
 

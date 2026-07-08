@@ -635,7 +635,7 @@ private struct SettingsMenuButton: NSViewRepresentable {
         }
 
         @objc private func rescanApplications() {
-            state.scanApplications()
+            state.requestManualApplicationRescan()
         }
 
         private func makeMenu() -> NSMenu {

@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var escapeHotkeyManager: HotkeyManager?
     private var keyboardMonitor: Any?
     private var scrollMonitor: Any?
+    private var applicationDirectoryMonitor: ApplicationDirectoryMonitor?
     private var workspaceActivationObserver: NSObjectProtocol?
     private var launcherDidHideObserver: NSObjectProtocol?
     private let launchWindowController = LaunchWindowController()
@@ -35,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configureHotkey()
         configureKeyboardMonitor()
         configureScrollMonitor()
+        configureApplicationDirectoryMonitor()
         configureWorkspaceActivationObserver()
         configureLauncherVisibilityObserver()
         createLaunchWindow()
@@ -53,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let launcherDidHideObserver {
             NotificationCenter.default.removeObserver(launcherDidHideObserver)
         }
+        applicationDirectoryMonitor?.stop()
         scrollPagingFinishTask?.cancel()
         restoreLauncherInputTask?.cancel()
         initialLaunchPresentationWorkItem?.cancel()
@@ -96,8 +99,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func rescanApplications() {
+        state.requestManualApplicationRescan()
         showOpenLaunch()
-        state.scanApplications()
     }
 
     @objc private func quit() {
@@ -276,6 +279,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             return self.handleScrollWheel(event)
         }
+    }
+
+    private func configureApplicationDirectoryMonitor() {
+        applicationDirectoryMonitor = ApplicationDirectoryMonitor(directories: AppScanner.defaultScanRoots()) { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+
+                self.state.handleApplicationDirectoryChange(
+                    isLauncherVisible: self.openLaunchWindow.map(self.isLauncherWindowVisible) ?? false
+                )
+            }
+        }
+        applicationDirectoryMonitor?.start()
     }
 
     private func configureWorkspaceActivationObserver() {
@@ -565,6 +583,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         resetScrollPagingGesture()
         applySearchSessionActions(for: .willShow)
+        state.refreshApplicationsIfNeededForPresentation()
         state.backgroundImage = launchWindowController.captureBackgroundImage(for: window)
         prepareChromeForLauncherPresentation(on: launchWindowController.targetScreen(for: window))
         launchWindowController.show(window)
