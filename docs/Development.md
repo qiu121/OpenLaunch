@@ -51,6 +51,12 @@ Apple 生态里常见的用户可见应用名通常使用 PascalCase 或 Title C
 swift test
 ```
 
+运行打包版本命名脚本测试：
+
+```bash
+bash Tests/PackageVersionTests.sh
+```
+
 构建调试版本：
 
 ```bash
@@ -86,13 +92,19 @@ scripts/package-dmg.sh
 生成结果：
 
 ```text
-.build/dist/OpenLaunch-0.1.0.dmg
+.build/dist/OpenLaunch-<package-version>.dmg
 ```
+
+`package-version` 由 `scripts/resolve-package-version.sh` 解析：
+
+- 当前提交有 `v` 开头的版本 tag，且工作区干净时，使用 tag 版本，例如 `OpenLaunch-0.1.0-alpha.1.dmg`。
+- 当前提交没有版本 tag 时，使用 App 版本加 `-dev`，例如 `OpenLaunch-0.1.0-dev.dmg`。
+- 当前提交有版本 tag 但工作区存在未提交改动时，仍标记为开发包，例如 `OpenLaunch-0.1.0-alpha.1-dev.dmg`。
 
 本机安装 DMG：
 
 ```bash
-open .build/dist/OpenLaunch-0.1.0.dmg
+open .build/dist/OpenLaunch-<package-version>.dmg
 ```
 
 打开后把 `OpenLaunch.app` 拖到 `Applications` 即可。
@@ -106,16 +118,25 @@ scripts/package-pkg.sh
 生成结果：
 
 ```text
-.build/dist/OpenLaunch-0.1.0.pkg
+.build/dist/OpenLaunch-<package-version>.pkg
 ```
 
 命令行安装 PKG：
 
 ```bash
-sudo installer -pkg .build/dist/OpenLaunch-0.1.0.pkg -target /
+sudo installer -pkg .build/dist/OpenLaunch-<package-version>.pkg -target /
 ```
 
 当前推荐使用 DMG 做本机安装；PKG 作为开发阶段的一键安装备选。两者都是本机 Developer Build 产物，未做 Developer ID 签名和 Apple 公证。对外分发前需要补齐签名、公证和必要的发布元数据。
+
+更完整的版本和发布流程见 `docs/Release.md`。
+
+## 文档索引
+
+- `README.md`：仓库入口、快速开始、当前状态和文档导航。
+- `docs/OpenLaunch-PRD.md`：产品定位、MVP 范围、验收标准和版本规划。
+- `docs/Development.md`：开发环境、当前行为、常用命令和工程规范。
+- `docs/Release.md`：版本策略、tag、DMG/PKG 打包和本机安装流程。
 
 ## 开发规范
 

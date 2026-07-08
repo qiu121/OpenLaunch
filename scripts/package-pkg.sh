@@ -12,8 +12,9 @@ cd "$ROOT_DIR"
 
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")"
+PACKAGE_VERSION="$(bash "$ROOT_DIR/scripts/resolve-package-version.sh" "$ROOT_DIR" "$VERSION")"
 BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST")"
-PKG_PATH="$DIST_DIR/${APP_NAME}-${VERSION}.pkg"
+PKG_PATH="$DIST_DIR/${APP_NAME}-${PACKAGE_VERSION}.pkg"
 
 mkdir -p "$DIST_DIR"
 rm -f "$PKG_PATH"
