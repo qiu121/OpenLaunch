@@ -74,6 +74,7 @@ open .build/dist/OpenLaunch-<package-version>.dmg
 │   ├── OpenLaunchCoreTests/              # 核心逻辑单元测试
 │   └── PackageVersionTests.sh            # 安装包版本命名测试
 ├── docs/
+│   ├── Conventional-Commits.md           # 提交信息规范
 │   ├── Development.md                    # 开发说明
 │   ├── OpenLaunch-PRD.md                 # 产品需求文档
 │   └── Release.md                        # 发布和打包说明
@@ -85,6 +86,7 @@ open .build/dist/OpenLaunch-<package-version>.dmg
 - [PRD](docs/OpenLaunch-PRD.md)：产品定位、MVP 范围、验收标准和版本规划。
 - [开发说明](docs/Development.md)：环境要求、当前行为、常用命令和工程规范。
 - [发布说明](docs/Release.md)：版本策略、tag、DMG/PKG 产物和本机安装流程。
+- [提交规范](docs/Conventional-Commits.md)：Conventional Commits 中文规范和 OpenLaunch 示例。
 
 ## 版本与安装包
 

@@ -134,6 +134,7 @@ sudo installer -pkg .build/dist/OpenLaunch-<package-version>.pkg -target /
 ## 文档索引
 
 - `README.md`：仓库入口、快速开始、当前状态和文档导航。
+- `docs/Conventional-Commits.md`：Conventional Commits 中文规范和提交示例。
 - `docs/OpenLaunch-PRD.md`：产品定位、MVP 范围、验收标准和版本规划。
 - `docs/Development.md`：开发环境、当前行为、常用命令和工程规范。
 - `docs/Release.md`：版本策略、tag、DMG/PKG 打包和本机安装流程。
@@ -141,6 +142,7 @@ sudo installer -pkg .build/dist/OpenLaunch-<package-version>.pkg -target /
 ## 开发规范
 
 - 公共类型和关键系统边界使用中文 `///` 文档注释。
+- 提交信息遵循 `docs/Conventional-Commits.md`，description 使用中文业务描述，body 优先说明用户可感知变化。
 - 类型名使用 UpperCamelCase，方法和属性使用 lowerCamelCase。
 - 核心逻辑放在 `OpenLaunchCore`，优先用 XCTest 覆盖。
 - UI 和 AppKit 集成保持薄层，避免把扫描、排序、存储逻辑写进视图。
