@@ -2,15 +2,12 @@ import XCTest
 @testable import OpenLaunchCore
 
 final class ApplicationRefreshPolicyTests: XCTestCase {
-    func testDirectoryChangeWhileHiddenMarksRefreshForNextPresentation() {
+    func testDirectoryChangeWhileHiddenRequestsImmediateBackgroundRescan() {
         var policy = ApplicationRefreshPolicy()
 
         let changeAction = policy.handleApplicationDirectoryChange(isLauncherVisible: false)
 
-        XCTAssertEqual(changeAction, .markNeedsRefresh)
-        XCTAssertTrue(policy.needsRefresh)
-        XCTAssertEqual(policy.handleLauncherWillShow(), .rescanImmediately)
-        XCTAssertFalse(policy.needsRefresh)
+        XCTAssertEqual(changeAction, .rescanImmediately)
         XCTAssertEqual(policy.handleLauncherWillShow(), .noAction)
     }
 
@@ -20,16 +17,14 @@ final class ApplicationRefreshPolicyTests: XCTestCase {
         let changeAction = policy.handleApplicationDirectoryChange(isLauncherVisible: true)
 
         XCTAssertEqual(changeAction, .rescanImmediately)
-        XCTAssertFalse(policy.needsRefresh)
         XCTAssertEqual(policy.handleLauncherWillShow(), .noAction)
     }
 
-    func testManualRescanClearsPendingRefresh() {
+    func testManualRescanRequestsImmediateRescan() {
         var policy = ApplicationRefreshPolicy()
         _ = policy.handleApplicationDirectoryChange(isLauncherVisible: false)
 
         XCTAssertEqual(policy.handleManualRescan(), .rescanImmediately)
-        XCTAssertFalse(policy.needsRefresh)
         XCTAssertEqual(policy.handleLauncherWillShow(), .noAction)
     }
 }

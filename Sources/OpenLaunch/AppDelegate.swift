@@ -593,6 +593,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         state.backgroundImage = launchWindowController.captureBackgroundImage(for: window)
         prepareChromeForLauncherPresentation(on: launchWindowController.targetScreen(for: window))
         launchWindowController.show(window)
+        state.prepareAppListChangeAnimationForPresentation()
         if LauncherChromePolicy.returnsToAccessoryImmediatelyAfterPresentation {
             NSApp.setActivationPolicy(.accessory)
         }

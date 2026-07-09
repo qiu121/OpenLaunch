@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var pageDragTranslation: CGFloat = 0
     @State private var draggingAppID: String?
     @State private var dropTargetAppID: String?
+    @State private var enteringAnimatedAppIDs: Set<String> = []
 
     private var displayedApps: [LaunchableApp] {
         state.settings.displayMode == .paged ? state.currentPageApps : state.visibleApps
@@ -55,6 +56,9 @@ struct ContentView: View {
             withPageAnimation {
                 state.goToPage(0)
             }
+        }
+        .onChange(of: state.presentingAnimatedAppIDs) { _, appIDs in
+            playAppEntryAnimation(for: appIDs)
         }
         .onExitCommand {
             OpenLaunchWindowActions.hide()
@@ -206,7 +210,7 @@ struct ContentView: View {
                 }
 
             ForEach(Array(apps.enumerated()), id: \.element.id) { index, app in
-                appTile(for: app)
+                animatedAppTile(for: app)
                 .position(LaunchGridLayoutMetrics.position(for: index, in: size, settings: state.settings))
             }
         }
@@ -251,7 +255,7 @@ struct ContentView: View {
     private var appGridContent: some View {
         LazyVGrid(columns: gridColumns, spacing: 22) {
             ForEach(displayedApps) { app in
-                appTile(for: app)
+                animatedAppTile(for: app)
             }
         }
     }
@@ -368,6 +372,15 @@ struct ContentView: View {
         }
     }
 
+    private func animatedAppTile(for app: LaunchableApp) -> some View {
+        let isEntering = enteringAnimatedAppIDs.contains(app.stableKey)
+
+        return appTile(for: app)
+            .scaleEffect(isEntering ? 0.82 : 1.0)
+            .opacity(isEntering ? 0.0 : 1.0)
+            .animation(appEntryAnimation, value: enteringAnimatedAppIDs)
+    }
+
     private func insertionEdge(for app: LaunchableApp) -> CustomInsertionEdge? {
         guard dropTargetAppID == app.stableKey,
               let draggingAppID,
@@ -386,6 +399,29 @@ struct ContentView: View {
 
     private func withPageAnimation(_ updates: () -> Void) {
         withAnimation(pageTurnAnimation, updates)
+    }
+
+    private var appEntryAnimation: Animation {
+        .interactiveSpring(response: 0.34, dampingFraction: 0.78, blendDuration: 0.04)
+    }
+
+    private func playAppEntryAnimation(for appIDs: Set<String>) {
+        guard !appIDs.isEmpty else {
+            return
+        }
+
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            enteringAnimatedAppIDs = appIDs
+        }
+
+        DispatchQueue.main.async {
+            withAnimation(appEntryAnimation) {
+                enteringAnimatedAppIDs.subtract(appIDs)
+            }
+            state.finishAppListChangeAnimationPresentation()
+        }
     }
 }
 

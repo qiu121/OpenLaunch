@@ -8,6 +8,13 @@ enum PageTurnDirection {
     case forward
 }
 
+/// 应用刷新来源，用于控制是否记录新增应用入场动画。
+enum AppListRefreshAnimationSource {
+    case none
+    case manual
+    case automaticDirectoryRefresh
+}
+
 /// 主界面的状态容器，负责把扫描、排序、搜索、启动和持久化串起来。
 @MainActor
 final class AppState: ObservableObject {
@@ -20,11 +27,14 @@ final class AppState: ObservableObject {
     @Published var backgroundImage: NSImage?
     @Published var pageTurnDirection: PageTurnDirection = .forward
     @Published var scrollPageTranslation: CGFloat = 0
+    @Published private(set) var pendingAnimatedAppIDs: Set<String> = []
+    @Published private(set) var presentingAnimatedAppIDs: Set<String> = []
 
     private let scanner: AppScanner
     private let store: SettingsStore
     private var recentOpenDates: [String: Date]
     private var applicationRefreshPolicy = ApplicationRefreshPolicy()
+    private var appListAnimationState = AppListAnimationState()
 
     /// 创建应用状态；测试或预览时可传入自定义扫描器和存储位置。
     init(scanner: AppScanner = AppScanner(), store: SettingsStore = SettingsStore()) {
@@ -74,9 +84,10 @@ final class AppState: ObservableObject {
     }
 
     /// 异步扫描本机应用目录，并合并 OpenLaunch 自己记录的最近打开时间。
-    func scanApplications() {
+    func scanApplications(animationSource: AppListRefreshAnimationSource = .none) {
         isScanning = true
         errorMessage = nil
+        let previousApps = apps
 
         Task {
             do {
@@ -89,6 +100,11 @@ final class AppState: ObservableObject {
                 }.value
 
                 apps = scannedApps
+                updatePendingAnimationIDs(
+                    previousApps: previousApps,
+                    currentApps: scannedApps,
+                    animationSource: animationSource
+                )
                 currentPage = min(currentPage, pageCount - 1)
             } catch {
                 errorMessage = "无法扫描应用：\(error.localizedDescription)"
@@ -98,30 +114,85 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// 处理应用目录变化；隐藏时延迟到下次打开，显示时直接刷新列表。
+    /// 处理应用目录变化；安装或移除应用后立即后台刷新列表。
     func handleApplicationDirectoryChange(isLauncherVisible: Bool) {
         performApplicationRefreshAction(
-            applicationRefreshPolicy.handleApplicationDirectoryChange(isLauncherVisible: isLauncherVisible)
+            applicationRefreshPolicy.handleApplicationDirectoryChange(isLauncherVisible: isLauncherVisible),
+            animationSource: .automaticDirectoryRefresh
         )
     }
 
-    /// 启动台显示前消费待刷新标记，让后台安装的新软件在下次打开时出现。
+    /// 启动台显示前处理刷新策略；自动刷新已在目录变化时后台执行。
     func refreshApplicationsIfNeededForPresentation() {
-        performApplicationRefreshAction(applicationRefreshPolicy.handleLauncherWillShow())
+        performApplicationRefreshAction(
+            applicationRefreshPolicy.handleLauncherWillShow(),
+            animationSource: .none
+        )
     }
 
-    /// 用户手动重新扫描时清除自动刷新待处理状态，并立即扫描。
+    /// 用户手动重新扫描时立即扫描。
     func requestManualApplicationRescan() {
-        performApplicationRefreshAction(applicationRefreshPolicy.handleManualRescan())
+        performApplicationRefreshAction(
+            applicationRefreshPolicy.handleManualRescan(),
+            animationSource: .manual
+        )
     }
 
-    private func performApplicationRefreshAction(_ action: ApplicationRefreshAction) {
+    /// 取出下一次展示需要强调的新增应用，并立即清空，避免重复播放。
+    func consumePendingAnimatedAppIDs() -> Set<String> {
+        let appIDs = appListAnimationState.consumePendingAnimatedAppIDs()
+        pendingAnimatedAppIDs = appListAnimationState.pendingAnimatedAppIDs
+        return appIDs
+    }
+
+    /// 启动台已经显示时调用，把后台检测到的新增应用转成一次性入场动画。
+    func prepareAppListChangeAnimationForPresentation() {
+        let appIDs = consumePendingAnimatedAppIDs()
+        focusPageContainingFirstAnimatedApp(in: appIDs)
+        presentingAnimatedAppIDs = appIDs
+    }
+
+    /// 视图开始播放入场动画后清空展示 id，让相同应用后续重新安装仍可再次触发。
+    func finishAppListChangeAnimationPresentation() {
+        presentingAnimatedAppIDs = []
+    }
+
+    private func performApplicationRefreshAction(
+        _ action: ApplicationRefreshAction,
+        animationSource: AppListRefreshAnimationSource
+    ) {
         switch action {
         case .rescanImmediately:
-            scanApplications()
-        case .markNeedsRefresh, .noAction:
+            scanApplications(animationSource: animationSource)
+        case .noAction:
             break
         }
+    }
+
+    private func updatePendingAnimationIDs(
+        previousApps: [LaunchableApp],
+        currentApps: [LaunchableApp],
+        animationSource: AppListRefreshAnimationSource
+    ) {
+        switch animationSource {
+        case .automaticDirectoryRefresh:
+            appListAnimationState.recordAutomaticRefresh(previousApps: previousApps, currentApps: currentApps)
+        case .manual, .none:
+            appListAnimationState.recordManualRefresh(previousApps: previousApps, currentApps: currentApps)
+        }
+
+        pendingAnimatedAppIDs = appListAnimationState.pendingAnimatedAppIDs
+    }
+
+    private func focusPageContainingFirstAnimatedApp(in appIDs: Set<String>) {
+        guard settings.displayMode == .paged,
+              !appIDs.isEmpty,
+              searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let firstAnimatedIndex = visibleApps.firstIndex(where: { appIDs.contains($0.stableKey) }) else {
+            return
+        }
+
+        goToPage(firstAnimatedIndex / max(pageSize, 1))
     }
 
     /// 更新排序模式并立即保存。
