@@ -396,38 +396,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return event
         }
 
-        switch Int(event.keyCode) {
-        case kVK_Escape:
+        let action = LauncherKeyboardInputPolicy.action(
+            keyCode: Int(event.keyCode),
+            characters: event.characters,
+            containsCommandModifier: event.modifierFlags.contains(.command),
+            containsControlModifier: event.modifierFlags.contains(.control),
+            isLauncherVisible: window.isVisible,
+            isSearchFocused: isSearchFocused(in: window),
+            hasSearchText: !state.searchText.isEmpty
+        )
+
+        switch action {
+        case .passThrough:
+            return event
+        case .hideLauncher:
             OpenLaunchWindowActions.hide()
             return nil
-        case kVK_LeftArrow:
+        case .previousPage:
             state.previousPage()
             return nil
-        case kVK_RightArrow:
+        case .nextPage:
             state.nextPage()
             return nil
-        case kVK_Delete:
-            let hadSearchText = !state.searchText.isEmpty
+        case .deleteBackwardAndFocusSearch:
             state.deleteBackwardInSearch()
-            if hadSearchText {
-                NotificationCenter.default.post(name: .openLaunchFocusSearch, object: nil)
-            }
+            NotificationCenter.default.post(name: .openLaunchFocusSearch, object: nil)
             return nil
-        default:
-            break
-        }
-
-        guard !event.modifierFlags.contains(.command),
-              !event.modifierFlags.contains(.control),
-              let characters = event.characters,
-              characters.rangeOfCharacter(from: .controlCharacters) == nil,
-              !characters.isEmpty else {
+        case .focusSearchAndForwardEvent:
+            NotificationCenter.default.post(name: .openLaunchFocusSearch, object: nil)
             return event
         }
+    }
 
-        state.appendSearchText(characters)
-        NotificationCenter.default.post(name: .openLaunchFocusSearch, object: nil)
-        return nil
+    private func isSearchFocused(in window: NSWindow) -> Bool {
+        guard let firstResponder = window.firstResponder else {
+            return false
+        }
+
+        return firstResponder is OpenLaunchSearchField || firstResponder is NSTextView
     }
 
     private func handleScrollWheel(_ event: NSEvent) -> NSEvent? {

@@ -162,7 +162,7 @@ final class OpenLaunchSearchField: NSTextField {
         focusObserver = NotificationCenter.default.addObserver(
             forName: .openLaunchFocusSearch,
             object: nil,
-            queue: .main
+            queue: nil
         ) { [weak self] _ in
             self?.focusAndMoveInsertionPointToEnd()
         }
@@ -170,7 +170,7 @@ final class OpenLaunchSearchField: NSTextField {
         blurObserver = NotificationCenter.default.addObserver(
             forName: .openLaunchBlurSearch,
             object: nil,
-            queue: .main
+            queue: nil
         ) { [weak self] _ in
             self?.resignOpenLaunchFocus()
         }
