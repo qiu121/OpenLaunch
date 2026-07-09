@@ -11,6 +11,9 @@ public struct LaunchableApp: Identifiable, Codable, Equatable, Hashable, Sendabl
     /// 展示给用户看的应用名称。
     public var displayName: String
 
+    /// 用于搜索的备用名称，例如原始英文名或 `.app` 文件名。
+    public var searchAliases: [String]
+
     /// Launch Services 分类，例如生产力、开发者工具等。
     public var category: String?
 
@@ -42,6 +45,7 @@ public struct LaunchableApp: Identifiable, Codable, Equatable, Hashable, Sendabl
         bundleIdentifier: String?,
         path: String,
         displayName: String,
+        searchAliases: [String] = [],
         category: String? = nil,
         addedDate: Date?,
         modifiedDate: Date? = nil,
@@ -51,11 +55,70 @@ public struct LaunchableApp: Identifiable, Codable, Equatable, Hashable, Sendabl
         self.bundleIdentifier = bundleIdentifier
         self.path = path
         self.displayName = displayName
+        self.searchAliases = searchAliases
         self.category = category
         self.addedDate = addedDate
         self.modifiedDate = modifiedDate
         self.lastOpenedDate = lastOpenedDate
         self.isHidden = isHidden
+    }
+
+    /// 判断应用是否匹配搜索输入；展示名、本地别名和 bundle identifier 均可命中。
+    public func matchesSearchQuery(_ query: String) -> Bool {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            return true
+        }
+
+        if displayName.localizedCaseInsensitiveContains(trimmedQuery) {
+            return true
+        }
+
+        if searchAliases.contains(where: { $0.localizedCaseInsensitiveContains(trimmedQuery) }) {
+            return true
+        }
+
+        return bundleIdentifier?.localizedCaseInsensitiveContains(trimmedQuery) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case bundleIdentifier
+        case path
+        case displayName
+        case searchAliases
+        case category
+        case addedDate
+        case modifiedDate
+        case lastOpenedDate
+        case isHidden
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        bundleIdentifier = try container.decodeIfPresent(String.self, forKey: .bundleIdentifier)
+        path = try container.decode(String.self, forKey: .path)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        searchAliases = try container.decodeIfPresent([String].self, forKey: .searchAliases) ?? []
+        category = try container.decodeIfPresent(String.self, forKey: .category)
+        addedDate = try container.decodeIfPresent(Date.self, forKey: .addedDate)
+        modifiedDate = try container.decodeIfPresent(Date.self, forKey: .modifiedDate)
+        lastOpenedDate = try container.decodeIfPresent(Date.self, forKey: .lastOpenedDate)
+        isHidden = try container.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        try container.encodeIfPresent(bundleIdentifier, forKey: .bundleIdentifier)
+        try container.encode(path, forKey: .path)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encode(searchAliases, forKey: .searchAliases)
+        try container.encodeIfPresent(category, forKey: .category)
+        try container.encodeIfPresent(addedDate, forKey: .addedDate)
+        try container.encodeIfPresent(modifiedDate, forKey: .modifiedDate)
+        try container.encodeIfPresent(lastOpenedDate, forKey: .lastOpenedDate)
+        try container.encode(isHidden, forKey: .isHidden)
     }
 }
 

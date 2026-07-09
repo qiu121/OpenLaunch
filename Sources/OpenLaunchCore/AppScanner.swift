@@ -10,11 +10,13 @@ public struct AppScanner {
 
     private let metadataProvider: any AppMetadataProviding
     private let candidateProvider: any AppCandidateProviding
+    private let displayNameResolver: AppDisplayNameResolver
 
     public init(
         scanRoots: [URL] = AppScanner.defaultScanRoots(),
         metadataProvider: any AppMetadataProviding = SpotlightMetadataProvider(),
         candidateProvider: (any AppCandidateProviding)? = nil,
+        displayNameResolver: AppDisplayNameResolver = AppDisplayNameResolver(),
         excludedBundleIdentifiers: Set<String> = AppScanner.defaultExcludedBundleIdentifiers(),
         excludedApplicationPaths: Set<String> = AppScanner.defaultExcludedApplicationPaths()
     ) {
@@ -23,6 +25,7 @@ public struct AppScanner {
         self.excludedApplicationPaths = excludedApplicationPaths
         self.metadataProvider = metadataProvider
         self.candidateProvider = candidateProvider ?? AppScanner.defaultCandidateProvider(for: scanRoots)
+        self.displayNameResolver = displayNameResolver
     }
 
     /// 扫描所有根目录，返回已过滤、去重后的应用列表。
@@ -61,18 +64,21 @@ public struct AppScanner {
             return nil
         }
 
-        let displayName = stringValue(info["CFBundleDisplayName"])
-            ?? stringValue(info["CFBundleName"])
-            ?? resolvedAppURL.deletingPathExtension().lastPathComponent
         let category = stringValue(info["LSApplicationCategoryType"])
         let metadata = metadataProvider.metadata(for: resolvedAppURL)
+        let nameResolution = displayNameResolver.resolveDisplayName(
+            for: resolvedAppURL,
+            info: info,
+            metadata: metadata
+        )
         let modifiedDate = metadata.modifiedDate
         let addedDate = metadata.spotlightDateAdded ?? metadata.creationDate ?? metadata.modifiedDate
 
         return LaunchableApp(
             bundleIdentifier: bundleIdentifier,
             path: resolvedAppURL.path,
-            displayName: displayName,
+            displayName: nameResolution.displayName,
+            searchAliases: nameResolution.searchAliases,
             category: category,
             addedDate: addedDate,
             modifiedDate: modifiedDate
@@ -403,6 +409,9 @@ private extension URL {
 
 /// `.app` 文件的时间元数据。
 public struct AppFileMetadata: Equatable, Sendable {
+    /// Spotlight 记录的系统展示名称，通常与 Finder/Launchpad 中看到的名称一致。
+    public let spotlightDisplayName: String?
+
     /// Spotlight 记录的“添加日期”，优先用于添加时间排序。
     public let spotlightDateAdded: Date?
 
@@ -412,7 +421,13 @@ public struct AppFileMetadata: Equatable, Sendable {
     /// 文件系统修改时间。
     public let modifiedDate: Date?
 
-    public init(spotlightDateAdded: Date?, creationDate: Date?, modifiedDate: Date?) {
+    public init(
+        spotlightDisplayName: String? = nil,
+        spotlightDateAdded: Date?,
+        creationDate: Date?,
+        modifiedDate: Date?
+    ) {
+        self.spotlightDisplayName = spotlightDisplayName
         self.spotlightDateAdded = spotlightDateAdded
         self.creationDate = creationDate
         self.modifiedDate = modifiedDate
@@ -432,10 +447,21 @@ public struct SpotlightMetadataProvider: AppMetadataProviding {
         let resourceValues = try? appURL.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
 
         return AppFileMetadata(
+            spotlightDisplayName: spotlightDisplayName(for: appURL),
             spotlightDateAdded: spotlightDateAdded(for: appURL),
             creationDate: resourceValues?.creationDate,
             modifiedDate: resourceValues?.contentModificationDate
         )
+    }
+
+    private func spotlightDisplayName(for appURL: URL) -> String? {
+        guard let item = MDItemCreate(kCFAllocatorDefault, appURL.path as CFString),
+              let value = MDItemCopyAttribute(item, kMDItemDisplayName) as? String else {
+            return nil
+        }
+
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedValue.isEmpty ? nil : trimmedValue
     }
 
     private func spotlightDateAdded(for appURL: URL) -> Date? {

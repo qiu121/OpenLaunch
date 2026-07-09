@@ -34,6 +34,109 @@ final class AppScannerTests: XCTestCase {
         XCTAssertNotNil(apps[0].addedDate)
     }
 
+    func testUsesLocalizedInfoPlistStringsForDisplayName() throws {
+        let appURL = try makeApplicationBundle(
+            named: "Localized.app",
+            bundleIdentifier: "com.example.Localized",
+            displayName: "Raw Localized"
+        )
+        try writeLocalizedInfoPlistStrings(
+            appURL: appURL,
+            localization: "en",
+            displayName: "Localized App"
+        )
+
+        let scanner = AppScanner(scanRoots: [temporaryDirectory])
+        let apps = try scanner.scanApplications()
+
+        XCTAssertEqual(apps[0].displayName, "Localized App")
+    }
+
+    func testUsesPreferredChineseLocalizationForDisplayName() throws {
+        let appURL = try makeApplicationBundle(
+            named: "ChineseLocalized.app",
+            bundleIdentifier: "com.example.ChineseLocalized",
+            displayName: "Raw Chinese Localized"
+        )
+        try writeLocalizedInfoPlistStrings(
+            appURL: appURL,
+            localization: "en",
+            displayName: "English Localized App"
+        )
+        try writeLocalizedInfoPlistStrings(
+            appURL: appURL,
+            localization: "zh_CN",
+            displayName: "中文应用"
+        )
+
+        let scanner = AppScanner(
+            scanRoots: [temporaryDirectory],
+            displayNameResolver: AppDisplayNameResolver(preferredLanguages: ["zh-Hans-CN"])
+        )
+        let apps = try scanner.scanApplications()
+
+        XCTAssertEqual(apps[0].displayName, "中文应用")
+    }
+
+    func testUsesLocalizedInfoPlistLoctableForDisplayName() throws {
+        let appURL = try makeApplicationBundle(
+            named: "TableLocalized.app",
+            bundleIdentifier: "com.example.TableLocalized",
+            displayName: "Raw Table"
+        )
+        try writeLocalizedInfoPlistLoctable(
+            appURL: appURL,
+            localization: "en",
+            displayName: "Localized Table App"
+        )
+
+        let scanner = AppScanner(scanRoots: [temporaryDirectory])
+        let apps = try scanner.scanApplications()
+
+        XCTAssertEqual(apps[0].displayName, "Localized Table App")
+    }
+
+    func testUsesSpotlightDisplayNameWhenItIsNotOnlyFileName() throws {
+        try makeApplicationBundle(
+            named: "SpotlightName.app",
+            bundleIdentifier: "com.example.SpotlightName",
+            displayName: "Raw Spotlight Name"
+        )
+        let metadataProvider = StubMetadataProvider(
+            defaultMetadata: AppFileMetadata(
+                spotlightDisplayName: "System Display Name",
+                spotlightDateAdded: nil,
+                creationDate: nil,
+                modifiedDate: nil
+            )
+        )
+
+        let scanner = AppScanner(scanRoots: [temporaryDirectory], metadataProvider: metadataProvider)
+        let apps = try scanner.scanApplications()
+
+        XCTAssertEqual(apps[0].displayName, "System Display Name")
+    }
+
+    func testKeepsRawNameAsSearchAliasAfterUsingLocalizedDisplayName() throws {
+        let appURL = try makeApplicationBundle(
+            named: "AliasLocalized.app",
+            bundleIdentifier: "com.example.AliasLocalized",
+            displayName: "Raw Alias Name"
+        )
+        try writeLocalizedInfoPlistStrings(
+            appURL: appURL,
+            localization: "en",
+            displayName: "Localized Alias Name"
+        )
+
+        let scanner = AppScanner(scanRoots: [temporaryDirectory])
+        let apps = try scanner.scanApplications()
+
+        XCTAssertEqual(apps[0].displayName, "Localized Alias Name")
+        XCTAssertTrue(apps[0].searchAliases.contains("Raw Alias Name"))
+        XCTAssertTrue(apps[0].matchesSearchQuery("Raw Alias"))
+    }
+
     func testUsesSpotlightDateAddedBeforeFileCreationDate() throws {
         try makeApplicationBundle(
             named: "NewlyAdded.app",
@@ -207,6 +310,41 @@ final class AppScannerTests: XCTestCase {
         let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
         try data.write(to: contentsURL.appendingPathComponent("Info.plist"))
         return appURL
+    }
+
+    private func writeLocalizedInfoPlistStrings(
+        appURL: URL,
+        localization: String,
+        displayName: String
+    ) throws {
+        let localizedDirectory = appURL
+            .appendingPathComponent("Contents/Resources/\(localization).lproj", isDirectory: true)
+        try FileManager.default.createDirectory(at: localizedDirectory, withIntermediateDirectories: true)
+
+        let strings: [String: String] = [
+            "CFBundleDisplayName": displayName,
+            "CFBundleName": displayName
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: strings, format: .binary, options: 0)
+        try data.write(to: localizedDirectory.appendingPathComponent("InfoPlist.strings"))
+    }
+
+    private func writeLocalizedInfoPlistLoctable(
+        appURL: URL,
+        localization: String,
+        displayName: String
+    ) throws {
+        let resourcesDirectory = appURL.appendingPathComponent("Contents/Resources", isDirectory: true)
+        try FileManager.default.createDirectory(at: resourcesDirectory, withIntermediateDirectories: true)
+
+        let loctable: [String: [String: String]] = [
+            localization: [
+                "CFBundleDisplayName": displayName,
+                "CFBundleName": displayName
+            ]
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: loctable, format: .binary, options: 0)
+        try data.write(to: resourcesDirectory.appendingPathComponent("InfoPlist.loctable"))
     }
 }
 

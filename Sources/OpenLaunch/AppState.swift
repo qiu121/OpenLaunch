@@ -46,10 +46,7 @@ final class AppState: ObservableObject {
             return sortedApps
         }
 
-        return sortedApps.filter { app in
-            app.displayName.localizedCaseInsensitiveContains(query)
-                || (app.bundleIdentifier?.localizedCaseInsensitiveContains(query) ?? false)
-        }
+        return sortedApps.filter { $0.matchesSearchQuery(query) }
     }
 
     var pageSize: Int {
