@@ -399,6 +399,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let action = LauncherKeyboardInputPolicy.action(
             keyCode: Int(event.keyCode),
             characters: event.characters,
+            charactersIgnoringModifiers: event.charactersIgnoringModifiers,
             containsCommandModifier: event.modifierFlags.contains(.command),
             containsControlModifier: event.modifierFlags.contains(.control),
             isLauncherVisible: window.isVisible,
@@ -425,7 +426,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .focusSearchAndForwardEvent:
             NotificationCenter.default.post(name: .openLaunchFocusSearch, object: nil)
             return event
+        case .performSearchShortcut(let shortcut):
+            performSearchShortcut(shortcut, in: window, focusFirst: false)
+            return nil
+        case .focusSearchAndPerformShortcut(let shortcut):
+            performSearchShortcut(shortcut, in: window, focusFirst: true)
+            return nil
         }
+    }
+
+    private func performSearchShortcut(
+        _ shortcut: LauncherSearchShortcut,
+        in window: NSWindow,
+        focusFirst: Bool
+    ) {
+        if focusFirst {
+            NotificationCenter.default.post(name: .openLaunchFocusSearch, object: nil)
+        }
+
+        guard let responder = searchEditingResponder(in: window) else {
+            return
+        }
+
+        switch shortcut {
+        case .selectAll:
+            responder.selectAll(nil)
+        case .copy:
+            NSApp.sendAction(#selector(NSText.copy(_:)), to: responder, from: nil)
+        case .cut:
+            NSApp.sendAction(#selector(NSText.cut(_:)), to: responder, from: nil)
+        case .paste:
+            NSApp.sendAction(#selector(NSText.paste(_:)), to: responder, from: nil)
+        }
+    }
+
+    private func searchEditingResponder(in window: NSWindow) -> NSText? {
+        if let text = window.firstResponder as? NSText {
+            return text
+        }
+
+        if let searchField = window.firstResponder as? OpenLaunchSearchField,
+           let editor = searchField.currentEditor() {
+            return editor
+        }
+
+        return window.fieldEditor(false, for: nil)
     }
 
     private func isSearchFocused(in window: NSWindow) -> Bool {

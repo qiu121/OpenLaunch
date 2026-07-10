@@ -6,6 +6,7 @@ final class LauncherKeyboardInputPolicyTests: XCTestCase {
         let action = LauncherKeyboardInputPolicy.action(
             keyCode: 0,
             characters: "n",
+            charactersIgnoringModifiers: "n",
             containsCommandModifier: false,
             containsControlModifier: false,
             isLauncherVisible: true,
@@ -20,6 +21,7 @@ final class LauncherKeyboardInputPolicyTests: XCTestCase {
         let action = LauncherKeyboardInputPolicy.action(
             keyCode: 0,
             characters: "n",
+            charactersIgnoringModifiers: "n",
             containsCommandModifier: false,
             containsControlModifier: false,
             isLauncherVisible: true,
@@ -32,8 +34,9 @@ final class LauncherKeyboardInputPolicyTests: XCTestCase {
 
     func testShortcutModifiersPassThrough() {
         let action = LauncherKeyboardInputPolicy.action(
-            keyCode: 0,
+            keyCode: 45,
             characters: "n",
+            charactersIgnoringModifiers: "n",
             containsCommandModifier: true,
             containsControlModifier: false,
             isLauncherVisible: true,
@@ -42,6 +45,28 @@ final class LauncherKeyboardInputPolicyTests: XCTestCase {
         )
 
         XCTAssertEqual(action, .passThrough)
+    }
+
+    func testFocusedSearchHandlesStandardEditingShortcuts() {
+        XCTAssertEqual(commandAction(forKeyCode: 0, charactersIgnoringModifiers: "a"), .performSearchShortcut(.selectAll))
+        XCTAssertEqual(commandAction(forKeyCode: 8, charactersIgnoringModifiers: "c"), .performSearchShortcut(.copy))
+        XCTAssertEqual(commandAction(forKeyCode: 7, charactersIgnoringModifiers: "x"), .performSearchShortcut(.cut))
+        XCTAssertEqual(commandAction(forKeyCode: 9, charactersIgnoringModifiers: "v"), .performSearchShortcut(.paste))
+    }
+
+    func testUnfocusedSearchCanBeFocusedForPasteAndSelectAllShortcuts() {
+        XCTAssertEqual(
+            commandAction(forKeyCode: 0, charactersIgnoringModifiers: "a", isSearchFocused: false),
+            .focusSearchAndPerformShortcut(.selectAll)
+        )
+        XCTAssertEqual(
+            commandAction(forKeyCode: 9, charactersIgnoringModifiers: "v", isSearchFocused: false),
+            .focusSearchAndPerformShortcut(.paste)
+        )
+        XCTAssertEqual(
+            commandAction(forKeyCode: 8, charactersIgnoringModifiers: "c", isSearchFocused: false),
+            .passThrough
+        )
     }
 
     func testLauncherNavigationKeysKeepExistingBehaviorWhenSearchIsNotFocused() {
@@ -63,11 +88,29 @@ final class LauncherKeyboardInputPolicyTests: XCTestCase {
         LauncherKeyboardInputPolicy.action(
             keyCode: keyCode,
             characters: nil,
+            charactersIgnoringModifiers: nil,
             containsCommandModifier: false,
             containsControlModifier: false,
             isLauncherVisible: true,
             isSearchFocused: isSearchFocused,
             hasSearchText: hasSearchText
+        )
+    }
+
+    private func commandAction(
+        forKeyCode keyCode: Int,
+        charactersIgnoringModifiers: String,
+        isSearchFocused: Bool = true
+    ) -> LauncherKeyboardInputAction {
+        LauncherKeyboardInputPolicy.action(
+            keyCode: keyCode,
+            characters: nil,
+            charactersIgnoringModifiers: charactersIgnoringModifiers,
+            containsCommandModifier: true,
+            containsControlModifier: false,
+            isLauncherVisible: true,
+            isSearchFocused: isSearchFocused,
+            hasSearchText: true
         )
     }
 }

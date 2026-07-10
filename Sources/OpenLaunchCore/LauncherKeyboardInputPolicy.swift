@@ -8,6 +8,16 @@ public enum LauncherKeyboardInputAction: Equatable, Sendable {
     case nextPage
     case deleteBackwardAndFocusSearch
     case focusSearchAndForwardEvent
+    case performSearchShortcut(LauncherSearchShortcut)
+    case focusSearchAndPerformShortcut(LauncherSearchShortcut)
+}
+
+/// 搜索框支持的基础编辑快捷键。
+public enum LauncherSearchShortcut: Equatable, Sendable {
+    case selectAll
+    case copy
+    case cut
+    case paste
 }
 
 /// 将 AppKit 键盘事件压缩成可测试的启动台输入策略。
@@ -16,10 +26,15 @@ public enum LauncherKeyboardInputPolicy {
     private static let deleteKeyCode = 51
     private static let leftArrowKeyCode = 123
     private static let rightArrowKeyCode = 124
+    private static let aKeyCode = 0
+    private static let cKeyCode = 8
+    private static let vKeyCode = 9
+    private static let xKeyCode = 7
 
     public static func action(
         keyCode: Int,
         characters: String?,
+        charactersIgnoringModifiers: String?,
         containsCommandModifier: Bool,
         containsControlModifier: Bool,
         isLauncherVisible: Bool,
@@ -28,6 +43,24 @@ public enum LauncherKeyboardInputPolicy {
     ) -> LauncherKeyboardInputAction {
         guard isLauncherVisible else {
             return .passThrough
+        }
+
+        if let shortcut = searchShortcut(
+            keyCode: keyCode,
+            charactersIgnoringModifiers: charactersIgnoringModifiers,
+            containsCommandModifier: containsCommandModifier,
+            containsControlModifier: containsControlModifier
+        ) {
+            if isSearchFocused {
+                return .performSearchShortcut(shortcut)
+            }
+
+            switch shortcut {
+            case .selectAll, .paste:
+                return .focusSearchAndPerformShortcut(shortcut)
+            case .copy, .cut:
+                return .passThrough
+            }
         }
 
         if isSearchFocused {
@@ -56,6 +89,43 @@ public enum LauncherKeyboardInputPolicy {
         }
 
         return .focusSearchAndForwardEvent
+    }
+
+    private static func searchShortcut(
+        keyCode: Int,
+        charactersIgnoringModifiers: String?,
+        containsCommandModifier: Bool,
+        containsControlModifier: Bool
+    ) -> LauncherSearchShortcut? {
+        guard containsCommandModifier, !containsControlModifier else {
+            return nil
+        }
+
+        switch keyCode {
+        case aKeyCode:
+            return .selectAll
+        case cKeyCode:
+            return .copy
+        case vKeyCode:
+            return .paste
+        case xKeyCode:
+            return .cut
+        default:
+            break
+        }
+
+        switch charactersIgnoringModifiers?.lowercased() {
+        case "a":
+            return .selectAll
+        case "c":
+            return .copy
+        case "v":
+            return .paste
+        case "x":
+            return .cut
+        default:
+            return nil
+        }
     }
 
     private static func isPrintableTextInput(
