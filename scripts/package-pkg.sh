@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="OpenLaunch"
 APP_BUNDLE="$ROOT_DIR/.build/${APP_NAME}.app"
 DIST_DIR="$ROOT_DIR/.build/dist"
+APP_ICON="$ROOT_DIR/Resources/OpenLaunchAppIcon.icns"
 
 cd "$ROOT_DIR"
 
@@ -26,5 +27,7 @@ COPYFILE_DISABLE=1 pkgbuild \
     --identifier "$BUNDLE_ID" \
     --version "$VERSION" \
     "$PKG_PATH"
+
+bash "$ROOT_DIR/scripts/apply-package-icon.sh" "$PKG_PATH" "$APP_ICON"
 
 echo "Packaged $PKG_PATH"
