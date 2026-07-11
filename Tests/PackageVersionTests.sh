@@ -3,11 +3,18 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="$ROOT_DIR/scripts/resolve-package-version.sh"
+BUILD_NUMBER_SCRIPT="$ROOT_DIR/scripts/resolve-build-number.sh"
+BUILD_APP_SCRIPT="$ROOT_DIR/scripts/build-app.sh"
 DMG_SCRIPT="$ROOT_DIR/scripts/package-dmg.sh"
 PKG_SCRIPT="$ROOT_DIR/scripts/package-pkg.sh"
 ICON_SCRIPT="$ROOT_DIR/scripts/apply-package-icon.sh"
+APP_ICON_GENERATOR="$ROOT_DIR/scripts/generate-app-icon.swift"
+APP_ICONSET="$ROOT_DIR/Resources/OpenLaunchAppIcon.iconset"
 DMG_ICON_SCRIPT="$ROOT_DIR/scripts/generate-dmg-volume-icon.sh"
 DMG_ICON_SWIFT="$ROOT_DIR/scripts/generate-dmg-volume-icon.swift"
+DMG_BACKGROUND_SWIFT="$ROOT_DIR/scripts/generate-dmg-background.swift"
+DMG_BACKGROUND_TEST_SWIFT="$ROOT_DIR/Tests/DMGBackgroundTests.swift"
+APP_ICON_TEST_SWIFT="$ROOT_DIR/Tests/AppIconTests.swift"
 DMGBUILD_SETTINGS="$ROOT_DIR/scripts/dmgbuild-openlaunch.py"
 DMGBUILD_LEGACY_JSON="$ROOT_DIR/scripts/dmgbuild-openlaunch.json"
 PACKAGING_PYPROJECT="$ROOT_DIR/pyproject.toml"
@@ -15,7 +22,9 @@ PACKAGING_LOCK="$ROOT_DIR/uv.lock"
 PACKAGE_WORKFLOW="$ROOT_DIR/.github/workflows/package.yml"
 
 TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
+NON_GIT_DIR="$(mktemp -d)"
+SHALLOW_PARENT="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR" "$NON_GIT_DIR" "$SHALLOW_PARENT"' EXIT
 
 assert_equal() {
     local expected="$1"
@@ -89,12 +98,43 @@ assert_has_custom_icon_attribute() {
     fi
 }
 
+assert_image_dimensions() {
+    local file="$1"
+    local expected_width="$2"
+    local expected_height="$3"
+    local message="$4"
+    local actual_width
+    local actual_height
+
+    actual_width="$(sips -g pixelWidth "$file" | awk '/pixelWidth/ { print $2 }')"
+    actual_height="$(sips -g pixelHeight "$file" | awk '/pixelHeight/ { print $2 }')"
+
+    if [[ "$actual_width" != "$expected_width" || "$actual_height" != "$expected_height" ]]; then
+        echo "FAIL: $message" >&2
+        echo "  expected: ${expected_width}x${expected_height}" >&2
+        echo "  actual:   ${actual_width}x${actual_height}" >&2
+        exit 1
+    fi
+}
+
 assert_contains 'resolve-package-version.sh' "$DMG_SCRIPT" "DMG packaging must use the shared package version resolver"
 assert_contains 'resolve-package-version.sh' "$PKG_SCRIPT" "PKG packaging must use the shared package version resolver"
+assert_file_exists "$BUILD_NUMBER_SCRIPT" "App builds must keep a shared bundle build-number resolver"
+assert_contains 'is-shallow-repository' "$BUILD_NUMBER_SCRIPT" "Local build numbers must reject incomplete Git history"
+assert_contains 'resolve-build-number.sh' "$BUILD_APP_SCRIPT" "App builds must derive CFBundleVersion from repository state"
+assert_contains 'CFBundleVersion' "$BUILD_APP_SCRIPT" "App builds must write a bundle build number"
+assert_not_contains '<string>1</string>' "$BUILD_APP_SCRIPT" "App builds must not keep a fixed bundle build number"
+assert_contains 'Print :CFBundleVersion' "$PKG_SCRIPT" "PKG packaging must read the bundle build number"
+assert_contains '--version "$BUILD_NUMBER"' "$PKG_SCRIPT" "PKG receipts must change with the app build number"
 assert_contains 'apply-package-icon.sh' "$DMG_SCRIPT" "DMG packaging must apply the OpenLaunch icon"
 assert_contains 'apply-package-icon.sh' "$PKG_SCRIPT" "PKG packaging must apply the OpenLaunch icon"
 assert_contains 'OpenLaunchDiskIcon' "$DMG_SCRIPT" "DMG packaging must use the disk-shaped OpenLaunch icon"
 assert_contains 'generate-dmg-volume-icon.sh' "$DMG_SCRIPT" "DMG packaging must generate the volume icon through the volume icon composer"
+assert_file_exists "$DMG_BACKGROUND_SWIFT" "DMG packaging must keep a Swift background generator"
+assert_file_exists "$DMG_BACKGROUND_TEST_SWIFT" "DMG packaging must keep background content checks"
+assert_file_exists "$APP_ICON_TEST_SWIFT" "App icon generation must keep visual regression checks"
+assert_not_contains 'lockFocus()' "$APP_ICON_GENERATOR" "App icon generation must not depend on the active screen scale"
+assert_contains 'generate-dmg-background.swift' "$DMG_SCRIPT" "DMG packaging must generate its Finder background"
 assert_contains 'uv run' "$DMG_SCRIPT" "DMG packaging must use uv to run the pinned Python packaging tools"
 assert_contains '--locked' "$DMG_SCRIPT" "DMG packaging must use the committed uv lockfile"
 assert_not_contains 'python -c' "$DMG_SCRIPT" "DMG packaging must not use inline Python probes"
@@ -119,9 +159,13 @@ assert_not_contains 'drawAppIconBadge' "$DMG_ICON_SWIFT" "DMG volume icon must n
 assert_file_not_exists "$DMGBUILD_LEGACY_JSON" "legacy appdmg JSON settings must be removed after switching to dmgbuild native settings"
 assert_file_exists "$DMGBUILD_SETTINGS" "DMG packaging must keep its Finder layout in a committed config file"
 assert_contains 'icon = ".build/package-icons/OpenLaunchDiskIcon.icns"' "$DMGBUILD_SETTINGS" "DMG layout must use the generated disk-shaped volume icon"
-assert_contains 'background = "#f5f7fa"' "$DMGBUILD_SETTINGS" "DMG layout must use a quiet system-like background"
+assert_contains 'background = ".build/package-assets/OpenLaunchDMGBackground.png"' "$DMGBUILD_SETTINGS" "DMG layout must use the generated background image"
+assert_not_contains 'background = "#f5f7fa"' "$DMGBUILD_SETTINGS" "DMG layout must not fall back to a plain color without the drag arrow"
 assert_contains 'icon_size = 112' "$DMGBUILD_SETTINGS" "DMG layout must use a large drag-install icon size"
 assert_contains 'format = "UDZO"' "$DMGBUILD_SETTINGS" "DMG layout must produce a compressed read-only image"
+assert_contains 'window_rect = ((180, 180), (560, 360))' "$DMGBUILD_SETTINGS" "DMG layout must keep the approved Finder window size"
+assert_contains '"OpenLaunch.app": (150, 180)' "$DMGBUILD_SETTINGS" "DMG layout must keep OpenLaunch left of the arrow"
+assert_contains '"Applications": (410, 180)' "$DMGBUILD_SETTINGS" "DMG layout must keep Applications right of the arrow"
 assert_contains 'files = [' "$DMGBUILD_SETTINGS" "DMG layout must include files through dmgbuild native settings"
 assert_contains '(".build/OpenLaunch.app", "OpenLaunch.app")' "$DMGBUILD_SETTINGS" "DMG layout must include the built OpenLaunch app"
 assert_contains '"Applications": "/Applications"' "$DMGBUILD_SETTINGS" "DMG layout must include an Applications shortcut"
@@ -138,6 +182,7 @@ assert_not_contains 'astral-sh/setup-uv@v6' "$PACKAGE_WORKFLOW" "packaging workf
 assert_contains 'uv sync --locked' "$PACKAGE_WORKFLOW" "packaging workflow must verify the committed uv lockfile"
 assert_contains 'scripts/package-dmg.sh' "$PACKAGE_WORKFLOW" "packaging workflow must build the DMG"
 assert_contains 'scripts/package-pkg.sh' "$PACKAGE_WORKFLOW" "packaging workflow must build the PKG"
+assert_contains 'OPENLAUNCH_BUILD_NUMBER: ${{ github.run_number }}' "$PACKAGE_WORKFLOW" "release packaging must use the workflow run number as a monotonic build number"
 assert_contains 'actions/upload-artifact' "$PACKAGE_WORKFLOW" "packaging workflow must upload non-release build artifacts"
 assert_contains 'softprops/action-gh-release' "$PACKAGE_WORKFLOW" "tagged packaging workflow must create GitHub releases"
 assert_contains 'tags:' "$PACKAGE_WORKFLOW" "packaging workflow must run for tags"
@@ -161,12 +206,64 @@ assert_has_custom_icon_attribute "$ICON_TEST_FILE" "PKG file must receive a Find
 assert_has_custom_icon_attribute "$ICON_TEST_VOLUME" "DMG staging folder must receive a Finder custom icon"
 rm -rf "$ICON_TMP_DIR"
 
+BACKGROUND_TMP_DIR="$TMP_DIR/dmg-background"
+mkdir -p "$BACKGROUND_TMP_DIR"
+touch "$BACKGROUND_TMP_DIR/OpenLaunchDMGBackground@3x.png"
+swift "$DMG_BACKGROUND_SWIFT" "$BACKGROUND_TMP_DIR"
+assert_file_exists "$BACKGROUND_TMP_DIR/OpenLaunchDMGBackground.png" "DMG background generator must create the 1x image"
+assert_file_exists "$BACKGROUND_TMP_DIR/OpenLaunchDMGBackground@2x.png" "DMG background generator must create the 2x image"
+assert_file_not_exists "$BACKGROUND_TMP_DIR/OpenLaunchDMGBackground@3x.png" "DMG background generator must remove stale scale variants"
+assert_image_dimensions "$BACKGROUND_TMP_DIR/OpenLaunchDMGBackground.png" 560 360 "DMG 1x background must match the Finder window"
+assert_image_dimensions "$BACKGROUND_TMP_DIR/OpenLaunchDMGBackground@2x.png" 1120 720 "DMG 2x background must match the Retina Finder window"
+swift "$DMG_BACKGROUND_TEST_SWIFT" "$BACKGROUND_TMP_DIR"
+rm -rf "$BACKGROUND_TMP_DIR"
+
+swift "$APP_ICON_TEST_SWIFT" "$ROOT_DIR/Resources/OpenLaunchAppIcon.iconset/icon_512x512@2x.png"
+assert_image_dimensions "$APP_ICONSET/icon_16x16.png" 16 16 "App icon 16pt 1x resource must use exact pixels"
+assert_image_dimensions "$APP_ICONSET/icon_16x16@2x.png" 32 32 "App icon 16pt 2x resource must use exact pixels"
+assert_image_dimensions "$APP_ICONSET/icon_32x32.png" 32 32 "App icon 32pt 1x resource must use exact pixels"
+assert_image_dimensions "$APP_ICONSET/icon_32x32@2x.png" 64 64 "App icon 32pt 2x resource must use exact pixels"
+assert_image_dimensions "$APP_ICONSET/icon_128x128.png" 128 128 "App icon 128pt 1x resource must use exact pixels"
+assert_image_dimensions "$APP_ICONSET/icon_128x128@2x.png" 256 256 "App icon 128pt 2x resource must use exact pixels"
+assert_image_dimensions "$APP_ICONSET/icon_256x256.png" 256 256 "App icon 256pt 1x resource must use exact pixels"
+assert_image_dimensions "$APP_ICONSET/icon_256x256@2x.png" 512 512 "App icon 256pt 2x resource must use exact pixels"
+assert_image_dimensions "$APP_ICONSET/icon_512x512.png" 512 512 "App icon 512pt 1x resource must use exact pixels"
+assert_image_dimensions "$APP_ICONSET/icon_512x512@2x.png" 1024 1024 "App icon 512pt 2x resource must use exact pixels"
+
 git -C "$TMP_DIR" init -q
 git -C "$TMP_DIR" config user.email "openlaunch-tests@example.com"
 git -C "$TMP_DIR" config user.name "OpenLaunch Tests"
 printf 'initial\n' > "$TMP_DIR/fixture.txt"
 git -C "$TMP_DIR" add fixture.txt
 git -C "$TMP_DIR" commit -qm "initial"
+
+actual="$(bash "$BUILD_NUMBER_SCRIPT" "$TMP_DIR")"
+assert_equal "1" "$actual" "the first repository commit uses bundle build number 1"
+
+printf 'second\n' >> "$TMP_DIR/fixture.txt"
+git -C "$TMP_DIR" add fixture.txt
+git -C "$TMP_DIR" commit -qm "second"
+actual="$(bash "$BUILD_NUMBER_SCRIPT" "$TMP_DIR")"
+assert_equal "2" "$actual" "bundle build numbers follow the repository commit count"
+
+actual="$(OPENLAUNCH_BUILD_NUMBER=42 bash "$BUILD_NUMBER_SCRIPT" "$TMP_DIR")"
+assert_equal "42" "$actual" "release automation can override the bundle build number"
+
+if OPENLAUNCH_BUILD_NUMBER=invalid bash "$BUILD_NUMBER_SCRIPT" "$TMP_DIR" >/dev/null 2>&1; then
+    echo "FAIL: invalid bundle build-number overrides must be rejected" >&2
+    exit 1
+fi
+
+if bash "$BUILD_NUMBER_SCRIPT" "$NON_GIT_DIR" >/dev/null 2>&1; then
+    echo "FAIL: local bundle build numbers must reject missing Git metadata" >&2
+    exit 1
+fi
+
+git clone -q --depth 1 "file://$TMP_DIR" "$SHALLOW_PARENT/repository"
+if bash "$BUILD_NUMBER_SCRIPT" "$SHALLOW_PARENT/repository" >/dev/null 2>&1; then
+    echo "FAIL: local bundle build numbers must reject shallow Git history" >&2
+    exit 1
+fi
 
 actual="$(bash "$SCRIPT" "$TMP_DIR" "0.1.0")"
 assert_equal "0.1.0-dev" "$actual" "untagged builds use the app version with a dev suffix"

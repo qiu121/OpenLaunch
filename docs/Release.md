@@ -9,7 +9,7 @@
 OpenLaunch 同时使用三类版本信息：
 
 1. App 版本：写入 `Info.plist` 的 `CFBundleShortVersionString`，当前为 `0.1.0`。
-2. 构建号：写入 `Info.plist` 的 `CFBundleVersion`，当前为 `1`。
+2. 构建号：写入 `Info.plist` 的 `CFBundleVersion`；本地取完整 Git 历史的提交计数，GitHub Actions 取工作流运行编号。
 3. Git tag：标记发布节点，例如 `v0.1.0-alpha.1`。
 
 推荐发布节奏：
@@ -98,7 +98,9 @@ DMG 打包说明：
 - 如果未指定 `DMGBUILD_BIN`，脚本会通过根目录 `uv run --locked` 使用 `uv.lock` 中锁定的打包依赖。
 - CI 环境需要运行在 macOS，并提供 `uv` 和 Xcode 命令行工具。
 - 安装窗口布局由 `scripts/dmgbuild-openlaunch.py` 描述，便于审查和复现。
+- 安装窗口使用纯色基底的 HiDPI 背景和居中直箭头提示拖拽方向；dmgbuild 自动组合基础图片与同名 `@2x` 图片。
 - DMG 卷图标和 `.dmg` 文件图标继续复用 OpenLaunch 的安装包图标脚本。
+- App 与 PKG 收据使用同一递增构建号，避免覆盖安装后 Dock 继续复用旧图标缓存。
 
 打包 PKG：
 

@@ -6,6 +6,8 @@ APP_NAME="OpenLaunch"
 APP_BUNDLE="$ROOT_DIR/.build/${APP_NAME}.app"
 EXECUTABLE="$ROOT_DIR/.build/release/${APP_NAME}"
 APP_ICON_NAME="OpenLaunchAppIcon"
+APP_VERSION="0.1.0"
+BUILD_NUMBER="$(bash "$ROOT_DIR/scripts/resolve-build-number.sh" "$ROOT_DIR")"
 
 cd "$ROOT_DIR"
 
@@ -19,7 +21,7 @@ mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 cp "$EXECUTABLE" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 cp "Resources/${APP_ICON_NAME}.icns" "$APP_BUNDLE/Contents/Resources/${APP_ICON_NAME}.icns"
 
-cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
+cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -43,9 +45,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>$APP_VERSION</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>$BUILD_NUMBER</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
     <key>LSMinimumSystemVersion</key>

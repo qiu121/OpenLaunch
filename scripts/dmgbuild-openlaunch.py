@@ -1,6 +1,6 @@
 # dmgbuild 原生配置：描述 DMG 安装窗口布局和卷图标。
 icon = ".build/package-icons/OpenLaunchDiskIcon.icns"
-background = "#f5f7fa"
+background = ".build/package-assets/OpenLaunchDMGBackground.png"
 icon_size = 112
 format = "UDZO"
 filesystem = "HFS+"

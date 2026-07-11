@@ -7,6 +7,8 @@ APP_BUNDLE="$ROOT_DIR/.build/${APP_NAME}.app"
 DIST_DIR="$ROOT_DIR/.build/dist"
 DMG_ICON_DIR="$ROOT_DIR/.build/package-icons"
 DMG_ICON="$DMG_ICON_DIR/OpenLaunchDiskIcon.icns"
+DMG_ASSET_DIR="$ROOT_DIR/.build/package-assets"
+DMG_BACKGROUND_SCRIPT="$ROOT_DIR/scripts/generate-dmg-background.swift"
 DMGBUILD_SETTINGS="$ROOT_DIR/scripts/dmgbuild-openlaunch.py"
 
 ensure_dmgbuild() {
@@ -29,6 +31,7 @@ cd "$ROOT_DIR"
 
 "$ROOT_DIR/scripts/build-app.sh"
 bash "$ROOT_DIR/scripts/generate-dmg-volume-icon.sh" "$DMG_ICON_DIR"
+swift "$DMG_BACKGROUND_SCRIPT" "$DMG_ASSET_DIR"
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")"
 PACKAGE_VERSION="$(bash "$ROOT_DIR/scripts/resolve-package-version.sh" "$ROOT_DIR" "$VERSION")"

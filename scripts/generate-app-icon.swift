@@ -28,24 +28,26 @@ let iconSizes: [(name: String, points: CGFloat, scale: CGFloat)] = [
 
 for iconSize in iconSizes {
     let pixels = Int(iconSize.points * iconSize.scale)
-    let image = drawIcon(pixelSize: pixels)
+    let image = try drawIcon(pixelSize: pixels)
     try writePNG(image, to: iconsetURL.appendingPathComponent(iconSize.name))
 }
 
-func drawIcon(pixelSize: Int) -> NSImage {
-    let size = NSSize(width: pixelSize, height: pixelSize)
-    let image = NSImage(size: size)
-
-    image.lockFocus()
-    defer { image.unlockFocus() }
-
-    guard let context = NSGraphicsContext.current?.cgContext else {
-        return image
+func drawIcon(pixelSize: Int) throws -> CGImage {
+    guard let context = CGContext(
+        data: nil,
+        width: pixelSize,
+        height: pixelSize,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else {
+        throw IconGenerationError.failedToCreateContext(pixelSize)
     }
 
     context.setAllowsAntialiasing(true)
     context.setShouldAntialias(true)
-    context.clear(CGRect(origin: .zero, size: size))
+    context.clear(CGRect(x: 0, y: 0, width: pixelSize, height: pixelSize))
 
     let scale = CGFloat(pixelSize) / 1024
     func rect(_ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat) -> CGRect {
@@ -69,21 +71,6 @@ func drawIcon(pixelSize: Int) -> NSImage {
         ],
         start: CGPoint(x: bodyRect.minX, y: bodyRect.maxY),
         end: CGPoint(x: bodyRect.maxX, y: bodyRect.minY),
-        context: context
-    )
-    context.restoreGState()
-
-    context.saveGState()
-    context.addPath(bodyCGPath)
-    context.clip()
-    drawLinearGradient(
-        in: rect(92, 590, 840, 300),
-        colors: [
-            NSColor.white.withAlphaComponent(0.45),
-            NSColor.white.withAlphaComponent(0.04)
-        ],
-        start: CGPoint(x: 0, y: 880 * scale),
-        end: CGPoint(x: 0, y: 570 * scale),
         context: context
     )
     context.restoreGState()
@@ -125,6 +112,9 @@ func drawIcon(pixelSize: Int) -> NSImage {
         }
     }
 
+    guard let image = context.makeImage() else {
+        throw IconGenerationError.failedToCreateImage(pixelSize)
+    }
     return image
 }
 
@@ -160,19 +150,20 @@ func drawLinearGradient(in rect: CGRect, colors: [NSColor], start: CGPoint, end:
     context.drawLinearGradient(gradient, start: start, end: end, options: [])
 }
 
-func writePNG(_ image: NSImage, to url: URL) throws {
-    guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
-          let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+func writePNG(_ image: CGImage, to url: URL) throws {
+    guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
         throw IconGenerationError.failedToWritePNG(url.path)
     }
 
-    CGImageDestinationAddImage(destination, cgImage, nil)
+    CGImageDestinationAddImage(destination, image, nil)
     if !CGImageDestinationFinalize(destination) {
         throw IconGenerationError.failedToWritePNG(url.path)
     }
 }
 
 enum IconGenerationError: Error {
+    case failedToCreateContext(Int)
+    case failedToCreateImage(Int)
     case failedToWritePNG(String)
 }
 

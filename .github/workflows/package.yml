@@ -44,9 +44,13 @@ jobs:
 
       - name: Build DMG
         run: bash scripts/package-dmg.sh
+        env:
+          OPENLAUNCH_BUILD_NUMBER: ${{ github.run_number }}
 
       - name: Build PKG
         run: bash scripts/package-pkg.sh
+        env:
+          OPENLAUNCH_BUILD_NUMBER: ${{ github.run_number }}
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v7

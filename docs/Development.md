@@ -96,6 +96,10 @@ DMG 脚本会通过根目录 `uv run --locked` 运行固定版本 `dmgbuild==1.6
 
 DMG 安装窗口布局使用 `scripts/dmgbuild-openlaunch.py` 的 dmgbuild 原生 settings 配置，不再保留 appdmg 兼容 JSON 配置。
 
+DMG 安装背景由 `scripts/generate-dmg-background.swift` 在打包时生成，普通和 Retina PNG 写入 `.build/package-assets/`。这些图片属于临时构建产物，不提交到仓库。
+
+应用的 `CFBundleVersion` 默认由 `scripts/resolve-build-number.sh` 使用完整 Git 历史的提交计数生成，确保系统能区分连续安装的构建并刷新 Dock 图标。浅克隆或源码归档需要通过 `OPENLAUNCH_BUILD_NUMBER` 注入正整数构建号；GitHub Actions 使用单调递增的工作流运行编号。
+
 生成结果：
 
 ```text

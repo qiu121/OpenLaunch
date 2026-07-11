@@ -13,6 +13,7 @@ cd "$ROOT_DIR"
 
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")"
+BUILD_NUMBER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST")"
 PACKAGE_VERSION="$(bash "$ROOT_DIR/scripts/resolve-package-version.sh" "$ROOT_DIR" "$VERSION")"
 BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST")"
 PKG_PATH="$DIST_DIR/${APP_NAME}-${PACKAGE_VERSION}.pkg"
@@ -25,7 +26,7 @@ COPYFILE_DISABLE=1 pkgbuild \
     --component "$APP_BUNDLE" \
     --install-location /Applications \
     --identifier "$BUNDLE_ID" \
-    --version "$VERSION" \
+    --version "$BUILD_NUMBER" \
     "$PKG_PATH"
 
 bash "$ROOT_DIR/scripts/apply-package-icon.sh" "$PKG_PATH" "$APP_ICON"
