@@ -8,6 +8,11 @@ PKG_SCRIPT="$ROOT_DIR/scripts/package-pkg.sh"
 ICON_SCRIPT="$ROOT_DIR/scripts/apply-package-icon.sh"
 DMG_ICON_SCRIPT="$ROOT_DIR/scripts/generate-dmg-volume-icon.sh"
 DMG_ICON_SWIFT="$ROOT_DIR/scripts/generate-dmg-volume-icon.swift"
+DMGBUILD_SETTINGS="$ROOT_DIR/scripts/dmgbuild-openlaunch.py"
+DMGBUILD_LEGACY_JSON="$ROOT_DIR/scripts/dmgbuild-openlaunch.json"
+PACKAGING_PYPROJECT="$ROOT_DIR/pyproject.toml"
+PACKAGING_LOCK="$ROOT_DIR/uv.lock"
+PACKAGE_WORKFLOW="$ROOT_DIR/.github/workflows/package.yml"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -30,7 +35,7 @@ assert_contains() {
     local file="$2"
     local message="$3"
 
-    if ! grep -Fq "$expected" "$file"; then
+    if ! grep -Fq -- "$expected" "$file"; then
         echo "FAIL: $message" >&2
         echo "  expected to find: $expected" >&2
         echo "  file:             $file" >&2
@@ -43,7 +48,7 @@ assert_not_contains() {
     local file="$2"
     local message="$3"
 
-    if grep -Fq "$unexpected" "$file"; then
+    if grep -Fq -- "$unexpected" "$file"; then
         echo "FAIL: $message" >&2
         echo "  unexpected text: $unexpected" >&2
         echo "  file:            $file" >&2
@@ -58,6 +63,17 @@ assert_file_exists() {
     if [[ ! -f "$file" ]]; then
         echo "FAIL: $message" >&2
         echo "  expected file: $file" >&2
+        exit 1
+    fi
+}
+
+assert_file_not_exists() {
+    local file="$1"
+    local message="$2"
+
+    if [[ -e "$file" ]]; then
+        echo "FAIL: $message" >&2
+        echo "  unexpected file: $file" >&2
         exit 1
     fi
 }
@@ -79,6 +95,16 @@ assert_contains 'apply-package-icon.sh' "$DMG_SCRIPT" "DMG packaging must apply 
 assert_contains 'apply-package-icon.sh' "$PKG_SCRIPT" "PKG packaging must apply the OpenLaunch icon"
 assert_contains 'OpenLaunchDiskIcon' "$DMG_SCRIPT" "DMG packaging must use the disk-shaped OpenLaunch icon"
 assert_contains 'generate-dmg-volume-icon.sh' "$DMG_SCRIPT" "DMG packaging must generate the volume icon through the volume icon composer"
+assert_contains 'uv run' "$DMG_SCRIPT" "DMG packaging must use uv to run the pinned Python packaging tools"
+assert_contains '--locked' "$DMG_SCRIPT" "DMG packaging must use the committed uv lockfile"
+assert_not_contains 'python -c' "$DMG_SCRIPT" "DMG packaging must not use inline Python probes"
+assert_not_contains 'dmgbuild.__version__' "$DMG_SCRIPT" "DMG packaging must let uv.lock enforce the dmgbuild version"
+assert_not_contains 'tools/packaging' "$DMG_SCRIPT" "DMG packaging must use the root uv project instead of a nested packaging project"
+assert_not_contains 'python3 -m venv' "$DMG_SCRIPT" "DMG packaging must not hand-roll a Python virtual environment"
+assert_not_contains 'pip install' "$DMG_SCRIPT" "DMG packaging must not install Python tools through raw pip"
+assert_contains 'dmgbuild-openlaunch.py' "$DMG_SCRIPT" "DMG packaging must use dmgbuild native settings"
+assert_not_contains 'dmgbuild-openlaunch.json' "$DMG_SCRIPT" "DMG packaging must not use the legacy appdmg JSON settings"
+assert_contains '--detach-retries 12' "$DMG_SCRIPT" "DMG packaging must retry image detach during CI-friendly builds"
 assert_not_contains 'generate-dmg-icon.swift' "$DMG_SCRIPT" "DMG packaging must not use the hand-drawn disk icon generator"
 assert_contains 'generate-dmg-volume-icon.swift' "$DMG_ICON_SCRIPT" "DMG volume icon generation must use the Swift volume icon composer"
 assert_not_contains 'dmgbuild[badge_icons]' "$DMG_ICON_SCRIPT" "DMG volume icon generation must not depend on badge composition with a built-in arrow"
@@ -90,8 +116,31 @@ assert_not_contains 'drawBadgeBackingPlate' "$DMG_ICON_SWIFT" "DMG volume icon m
 assert_not_contains 'drawSolidMosaicBadge' "$DMG_ICON_SWIFT" "DMG volume icon must not use the rejected mosaic sticker mark"
 assert_not_contains 'drawSystemStyleDiskShell' "$DMG_ICON_SWIFT" "DMG volume icon must not hand-draw the system disk shell"
 assert_not_contains 'drawAppIconBadge' "$DMG_ICON_SWIFT" "DMG volume icon must not paste the full app icon as a small badge"
-assert_contains 'UDRW' "$DMG_SCRIPT" "DMG packaging must use a writable image before setting the mounted volume icon"
-assert_contains 'hdiutil convert' "$DMG_SCRIPT" "DMG packaging must compress the icon-ready writable image"
+assert_file_not_exists "$DMGBUILD_LEGACY_JSON" "legacy appdmg JSON settings must be removed after switching to dmgbuild native settings"
+assert_file_exists "$DMGBUILD_SETTINGS" "DMG packaging must keep its Finder layout in a committed config file"
+assert_contains 'icon = ".build/package-icons/OpenLaunchDiskIcon.icns"' "$DMGBUILD_SETTINGS" "DMG layout must use the generated disk-shaped volume icon"
+assert_contains 'background = "#f5f7fa"' "$DMGBUILD_SETTINGS" "DMG layout must use a quiet system-like background"
+assert_contains 'icon_size = 112' "$DMGBUILD_SETTINGS" "DMG layout must use a large drag-install icon size"
+assert_contains 'format = "UDZO"' "$DMGBUILD_SETTINGS" "DMG layout must produce a compressed read-only image"
+assert_contains 'files = [' "$DMGBUILD_SETTINGS" "DMG layout must include files through dmgbuild native settings"
+assert_contains '(".build/OpenLaunch.app", "OpenLaunch.app")' "$DMGBUILD_SETTINGS" "DMG layout must include the built OpenLaunch app"
+assert_contains '"Applications": "/Applications"' "$DMGBUILD_SETTINGS" "DMG layout must include an Applications shortcut"
+assert_file_exists "$PACKAGING_PYPROJECT" "DMG packaging must keep Python packaging dependencies in a uv project"
+assert_file_exists "$PACKAGING_LOCK" "DMG packaging must commit uv.lock for repeatable local and CI builds"
+assert_contains 'dmgbuild==1.6.7' "$PACKAGING_PYPROJECT" "DMG packaging project must pin dmgbuild"
+assert_contains 'name = "dmgbuild"' "$PACKAGING_LOCK" "uv lockfile must include dmgbuild"
+assert_file_exists "$PACKAGE_WORKFLOW" "GitHub Actions packaging workflow must be documented as runnable automation"
+assert_contains 'fetch-depth: 0' "$PACKAGE_WORKFLOW" "packaging workflow must fetch tags for package version resolution"
+assert_contains 'astral-sh/setup-uv' "$PACKAGE_WORKFLOW" "packaging workflow must install uv"
+assert_contains 'uv sync --locked' "$PACKAGE_WORKFLOW" "packaging workflow must verify the committed uv lockfile"
+assert_contains 'scripts/package-dmg.sh' "$PACKAGE_WORKFLOW" "packaging workflow must build the DMG"
+assert_contains 'scripts/package-pkg.sh' "$PACKAGE_WORKFLOW" "packaging workflow must build the PKG"
+assert_contains 'actions/upload-artifact' "$PACKAGE_WORKFLOW" "packaging workflow must upload non-release build artifacts"
+assert_contains 'softprops/action-gh-release' "$PACKAGE_WORKFLOW" "tagged packaging workflow must create GitHub releases"
+assert_contains 'tags:' "$PACKAGE_WORKFLOW" "packaging workflow must run for tags"
+assert_contains 'v*' "$PACKAGE_WORKFLOW" "packaging workflow must use v-prefixed release tags"
+assert_contains 'schedule:' "$PACKAGE_WORKFLOW" "packaging workflow must include scheduled health builds"
+assert_contains 'github.ref_type == '\''tag'\''' "$PACKAGE_WORKFLOW" "packaging workflow must publish releases only for tags"
 assert_contains 'DeRez' "$ICON_SCRIPT" "package icon helper must support Finder file icons"
 assert_contains 'SetFile' "$ICON_SCRIPT" "package icon helper must mark custom icons"
 

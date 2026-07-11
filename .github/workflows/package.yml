@@ -1,0 +1,68 @@
+name: Package
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * 0"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Build install packages
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.28"
+          enable-cache: true
+
+      - name: Verify uv lockfile
+        run: uv sync --locked
+
+      - name: Run tests
+        run: |
+          swift test
+          bash Tests/PackageVersionTests.sh
+          git diff --check
+
+      - name: Build DMG
+        run: bash scripts/package-dmg.sh
+
+      - name: Build PKG
+        run: bash scripts/package-pkg.sh
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: OpenLaunch-packages-${{ github.ref_name }}
+          path: |
+            .build/dist/OpenLaunch-*.dmg
+            .build/dist/OpenLaunch-*.pkg
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            .build/dist/OpenLaunch-*.dmg
+            .build/dist/OpenLaunch-*.pkg
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
