@@ -52,7 +52,7 @@ OpenLaunch-0.1.0-alpha.1-dev.pkg
 
 这个规则的目标是让“正式发布包”和“本机临时构建包”在文件名上直接区分开。
 
-## 本机发布流程
+## 本机打包流程
 
 发布前检查工作区：
 
@@ -80,11 +80,25 @@ git log --oneline -5
 git tag -a v0.1.0-alpha.1 -m "OpenLaunch v0.1.0-alpha.1"
 ```
 
+同步 Python 打包工具依赖：
+
+```bash
+uv sync --locked
+```
+
 打包 DMG：
 
 ```bash
 scripts/package-dmg.sh
 ```
+
+DMG 打包说明：
+
+- `scripts/package-dmg.sh` 使用固定版本 `dmgbuild==1.6.7` 生成安装窗口布局。
+- 如果未指定 `DMGBUILD_BIN`，脚本会通过根目录 `uv run --locked` 使用 `uv.lock` 中锁定的打包依赖。
+- CI 环境需要运行在 macOS，并提供 `uv` 和 Xcode 命令行工具。
+- 安装窗口布局由 `scripts/dmgbuild-openlaunch.py` 描述，便于审查和复现。
+- DMG 卷图标和 `.dmg` 文件图标继续复用 OpenLaunch 的安装包图标脚本。
 
 打包 PKG：
 
@@ -105,6 +119,54 @@ open .build/dist/OpenLaunch-0.1.0-alpha.1.dmg
 ```
 
 打开 DMG 后，把 `OpenLaunch.app` 拖到 `Applications`。
+
+## GitHub Actions
+
+仓库提供 `.github/workflows/package.yml` 作为打包流水线示例。
+
+触发方式：
+
+- `push` 到 `v*` tag：运行测试，打包 DMG/PKG，上传 artifact，并创建 GitHub Release。
+- `workflow_dispatch`：手动触发一次开发构建，只上传 artifact，不创建 Release。
+- `schedule`：每周运行一次健康构建，只上传 artifact，不创建 Release。
+
+关键步骤：
+
+```yaml
+- uses: actions/checkout@v7
+  with:
+    fetch-depth: 0
+
+- uses: astral-sh/setup-uv@v6
+  with:
+    version: "0.11.28"
+    enable-cache: true
+
+- run: uv sync --locked
+- run: swift test
+- run: bash Tests/PackageVersionTests.sh
+- run: bash scripts/package-dmg.sh
+- run: bash scripts/package-pkg.sh
+```
+
+Release 发布只在 tag 构建中执行：
+
+```yaml
+if: github.ref_type == 'tag'
+```
+
+当前阶段未配置 Developer ID 签名和 Apple 公证。公开分发前，需要在 GitHub Actions 中增加证书导入、`codesign`、`notarytool` 和 `stapler` 步骤，并通过 Secrets 管理 Apple 开发者账号相关凭据。
+
+## 版本策略建议
+
+推荐以 Git tag 作为发布版本的唯一来源。
+
+- 正式或预发布版本：创建 `v0.1.0`、`v0.1.0-alpha.1`、`v0.1.0-beta.1` 这类 tag。
+- 本机开发构建：不打 tag，输出 `OpenLaunch-0.1.0-dev.dmg` / `.pkg`。
+- tag 提交存在未提交改动：输出 `OpenLaunch-0.1.0-alpha.1-dev.dmg` / `.pkg`，避免误当发布包。
+- 定时构建：只用于验证主分支仍可构建，不建议生成正式版本号，也不建议自动发布 Release。
+
+如果后续需要 nightly 包，可以另加独立命名规则，例如 `OpenLaunch-0.1.0-nightly.<run-number>.dmg`。当前阶段先不引入 nightly 版本号，避免和语义化发布版本混在一起。
 
 ## 本机验收清单
 

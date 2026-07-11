@@ -67,7 +67,9 @@ open .build/dist/OpenLaunch-<package-version>.dmg
 
 ```text
 .
+├── .github/                              # GitHub Actions 工作流
 ├── Package.swift                         # SwiftPM 包定义
+├── pyproject.toml                        # DMG 打包工具依赖定义
 ├── README.md                             # 项目入口文档
 ├── Resources/                            # App 图标资源
 ├── Sources/
@@ -75,13 +77,14 @@ open .build/dist/OpenLaunch-<package-version>.dmg
 │   └── OpenLaunchCore/                   # 可测试核心逻辑
 ├── Tests/
 │   ├── OpenLaunchCoreTests/              # 核心逻辑单元测试
-│   └── PackageVersionTests.sh            # 安装包版本命名测试
+│   └── PackageVersionTests.sh            # 安装包版本与打包约束测试
 ├── docs/
 │   ├── Conventional-Commits.md           # 提交信息规范
 │   ├── Development.md                    # 开发说明
 │   ├── OpenLaunch-PRD.md                 # 产品需求文档
 │   └── Release.md                        # 发布和打包说明
-└── scripts/                              # 构建、图标生成和打包脚本
+├── scripts/                              # 构建、图标生成和打包脚本
+└── uv.lock                               # DMG 打包工具依赖锁定
 ```
 
 ## 文档

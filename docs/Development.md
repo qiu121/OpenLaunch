@@ -5,6 +5,7 @@
 - macOS 26.x 或兼容版本。
 - Xcode 26.6。
 - Swift 6.3.x。
+- uv 0.11.x 或兼容版本，用于运行锁定的 DMG 打包工具链。
 
 当前项目使用 Swift Package Manager 组织代码：
 
@@ -53,7 +54,7 @@ Apple 生态里常见的用户可见应用名通常使用 PascalCase 或 Title C
 swift test
 ```
 
-运行打包版本命名脚本测试：
+运行安装包版本与打包约束测试：
 
 ```bash
 bash Tests/PackageVersionTests.sh
@@ -90,6 +91,10 @@ open .build/OpenLaunch.app
 ```bash
 scripts/package-dmg.sh
 ```
+
+DMG 脚本会通过根目录 `uv run --locked` 运行固定版本 `dmgbuild==1.6.7`，并使用根目录 `uv.lock` 锁定传递依赖。默认不需要手动创建 Python 虚拟环境；如果需要使用外部环境，可通过 `DMGBUILD_BIN=/path/to/dmgbuild scripts/package-dmg.sh` 指定。
+
+DMG 安装窗口布局使用 `scripts/dmgbuild-openlaunch.py` 的 dmgbuild 原生 settings 配置，不再保留 appdmg 兼容 JSON 配置。
 
 生成结果：
 
