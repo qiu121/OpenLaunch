@@ -188,18 +188,25 @@ final class AppScannerTests: XCTestCase {
     }
 
     func testCandidateVisibilityPolicyIncludesUserInstalledAppsOutsideApplications() {
-        let policy = AppCandidateVisibilityPolicy()
+        let homeDirectory = URL(fileURLWithPath: "/Users/openlaunch-test", isDirectory: true)
+        let policy = AppCandidateVisibilityPolicy(homeDirectory: homeDirectory)
+        let downloadsApp = homeDirectory.appendingPathComponent("Downloads/Menu Bar Spacing.app")
+        let desktopApp = homeDirectory.appendingPathComponent("Desktop/Tools/Example.app")
 
-        XCTAssertTrue(policy.allows(URL(fileURLWithPath: "/Users/geek/Downloads/Menu Bar Spacing.app")))
-        XCTAssertTrue(policy.allows(URL(fileURLWithPath: "/Users/geek/Desktop/Tools/Example.app")))
+        XCTAssertTrue(policy.allows(downloadsApp))
+        XCTAssertTrue(policy.allows(desktopApp))
     }
 
     func testCandidateVisibilityPolicyExcludesInternalSystemAndDaemonApps() {
-        let policy = AppCandidateVisibilityPolicy()
+        let homeDirectory = URL(fileURLWithPath: "/Users/openlaunch-test", isDirectory: true)
+        let policy = AppCandidateVisibilityPolicy(homeDirectory: homeDirectory)
+        let userDaemonApp = homeDirectory.appendingPathComponent(
+            "Library/Application Support/JetBrains/Daemon/bundles/current/jetbrainsd.app"
+        )
 
         XCTAssertFalse(policy.allows(URL(fileURLWithPath: "/System/Library/CoreServices/Dock.app")))
         XCTAssertFalse(policy.allows(URL(fileURLWithPath: "/System/Library/PrivateFrameworks/CoreFollowUp.framework/Versions/A/Resources/FollowUpUI.app")))
-        XCTAssertFalse(policy.allows(URL(fileURLWithPath: "/Users/geek/Library/Application Support/JetBrains/Daemon/bundles/current/jetbrainsd.app")))
+        XCTAssertFalse(policy.allows(userDaemonApp))
     }
 
     func testCandidateVisibilityPolicyKeepsPublicCoreServicesApplications() {
