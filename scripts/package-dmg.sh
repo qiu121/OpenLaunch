@@ -5,10 +5,25 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="OpenLaunch"
 APP_BUNDLE="$ROOT_DIR/.build/${APP_NAME}.app"
 DIST_DIR="$ROOT_DIR/.build/dist"
-STAGING_DIR="$ROOT_DIR/.build/dmg-staging"
-MOUNT_DIR="$ROOT_DIR/.build/dmg-mount"
 DMG_ICON_DIR="$ROOT_DIR/.build/package-icons"
 DMG_ICON="$DMG_ICON_DIR/OpenLaunchDiskIcon.icns"
+DMGBUILD_SETTINGS="$ROOT_DIR/scripts/dmgbuild-openlaunch.py"
+
+ensure_dmgbuild() {
+    if [[ -n "${DMGBUILD_BIN:-}" ]]; then
+        if [[ ! -x "$DMGBUILD_BIN" ]]; then
+            echo "DMGBUILD_BIN must point to an executable dmgbuild binary." >&2
+            exit 1
+        fi
+        return
+    fi
+
+    if ! command -v uv >/dev/null 2>&1; then
+        echo "uv is required to package DMG with dmgbuild." >&2
+        echo "Install uv from https://docs.astral.sh/uv/ and rerun scripts/package-dmg.sh." >&2
+        exit 1
+    fi
+}
 
 cd "$ROOT_DIR"
 
@@ -18,42 +33,28 @@ bash "$ROOT_DIR/scripts/generate-dmg-volume-icon.sh" "$DMG_ICON_DIR"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")"
 PACKAGE_VERSION="$(bash "$ROOT_DIR/scripts/resolve-package-version.sh" "$ROOT_DIR" "$VERSION")"
 DMG_PATH="$DIST_DIR/${APP_NAME}-${PACKAGE_VERSION}.dmg"
-RW_DMG_PATH="$DIST_DIR/${APP_NAME}-${PACKAGE_VERSION}.rw.dmg"
 
-cleanup() {
-    if [[ -d "$MOUNT_DIR" ]] && hdiutil info | grep -Fq "$MOUNT_DIR"; then
-        hdiutil detach "$MOUNT_DIR" -quiet || true
-    fi
+rm -f "$DMG_PATH"
+mkdir -p "$DIST_DIR"
 
-    rm -rf "$STAGING_DIR" "$MOUNT_DIR"
-    rm -f "$RW_DMG_PATH"
-}
+# 使用 dmgbuild 生成可复现的 Finder 安装窗口布局，避免依赖 Finder 或 AppleScript。
+ensure_dmgbuild
 
-trap cleanup EXIT
-
-rm -rf "$STAGING_DIR" "$MOUNT_DIR"
-rm -f "$DMG_PATH" "$RW_DMG_PATH"
-mkdir -p "$DIST_DIR" "$STAGING_DIR" "$MOUNT_DIR"
-
-# 使用 ditto 复制 .app，保留 bundle 结构和资源属性。
-ditto "$APP_BUNDLE" "$STAGING_DIR/${APP_NAME}.app"
-ln -s /Applications "$STAGING_DIR/Applications"
-
-hdiutil create \
-    -volname "$APP_NAME" \
-    -srcfolder "$STAGING_DIR" \
-    -ov \
-    -format UDRW \
-    "$RW_DMG_PATH"
-
-hdiutil attach "$RW_DMG_PATH" -mountpoint "$MOUNT_DIR" -nobrowse -quiet
-bash "$ROOT_DIR/scripts/apply-package-icon.sh" "$MOUNT_DIR" "$DMG_ICON"
-hdiutil detach "$MOUNT_DIR" -quiet
-
-hdiutil convert "$RW_DMG_PATH" \
-    -ov \
-    -format UDZO \
-    -o "$DMG_PATH"
+if [[ -n "${DMGBUILD_BIN:-}" ]]; then
+    "$DMGBUILD_BIN" \
+        --detach-retries 12 \
+        -s "$DMGBUILD_SETTINGS" \
+        "$APP_NAME" \
+        "$DMG_PATH"
+else
+    uv run \
+        --locked \
+        dmgbuild \
+        --detach-retries 12 \
+        -s "$DMGBUILD_SETTINGS" \
+        "$APP_NAME" \
+        "$DMG_PATH"
+fi
 
 bash "$ROOT_DIR/scripts/apply-package-icon.sh" "$DMG_PATH" "$DMG_ICON"
 
