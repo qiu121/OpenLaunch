@@ -124,6 +124,8 @@ open .build/dist/OpenLaunch-0.1.0-alpha.1.dmg
 
 仓库提供 `.github/workflows/package.yml` 作为打包流水线示例。
 
+打包任务固定使用 `macos-26`，避免 `macos-latest` 迁移期间因系统和默认 Xcode 变化产生不可复现的构建结果。
+
 触发方式：
 
 - `push` 到 `v*` tag：运行测试，打包 DMG/PKG，上传 artifact，并创建 GitHub Release。
@@ -137,7 +139,7 @@ open .build/dist/OpenLaunch-0.1.0-alpha.1.dmg
   with:
     fetch-depth: 0
 
-- uses: astral-sh/setup-uv@v6
+- uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
   with:
     version: "0.11.28"
     enable-cache: true
