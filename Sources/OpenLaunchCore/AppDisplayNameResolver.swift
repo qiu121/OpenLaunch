@@ -53,12 +53,27 @@ public struct AppDisplayNameResolver: Sendable {
         fileName: String,
         fallbackName: String
     ) -> String {
-        if let spotlightDisplayName,
-           normalizedSearchKey(spotlightDisplayName) != normalizedSearchKey(fileName) {
-            return spotlightDisplayName
+        if let spotlightDisplayName {
+            let normalizedSpotlightName = removingApplicationExtension(from: spotlightDisplayName)
+            if normalizedSearchKey(normalizedSpotlightName) != normalizedSearchKey(fileName) {
+                return normalizedSpotlightName
+            }
         }
 
-        return localizedName ?? fallbackName
+        return removingApplicationExtension(from: localizedName ?? fallbackName)
+    }
+
+    /// Finder 可配置为显示扩展名，但启动台中的应用名称始终隐藏 `.app`。
+    private func removingApplicationExtension(from value: String) -> String {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedValue.count > 4,
+              trimmedValue.lowercased().hasSuffix(".app") else {
+            return trimmedValue
+        }
+
+        let name = String(trimmedValue.dropLast(4))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? trimmedValue : name
     }
 
     private func localizedNameFromLoctable(in appURL: URL) -> String? {

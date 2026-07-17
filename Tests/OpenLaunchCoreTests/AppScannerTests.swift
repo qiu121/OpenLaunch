@@ -117,6 +117,40 @@ final class AppScannerTests: XCTestCase {
         XCTAssertEqual(apps[0].displayName, "System Display Name")
     }
 
+    func testRemovesApplicationExtensionFromSpotlightDisplayName() throws {
+        try makeApplicationBundle(
+            named: "SystemSettings.app",
+            bundleIdentifier: "com.example.SystemSettings",
+            displayName: "System Settings"
+        )
+        let metadataProvider = StubMetadataProvider(
+            defaultMetadata: AppFileMetadata(
+                spotlightDisplayName: "系统设置.app",
+                spotlightDateAdded: nil,
+                creationDate: nil,
+                modifiedDate: nil
+            )
+        )
+
+        let scanner = AppScanner(scanRoots: [temporaryDirectory], metadataProvider: metadataProvider)
+        let apps = try scanner.scanApplications()
+
+        XCTAssertEqual(apps[0].displayName, "系统设置")
+    }
+
+    func testRemovesApplicationExtensionFromBundleDisplayName() throws {
+        try makeApplicationBundle(
+            named: "VisibleExtension.app",
+            bundleIdentifier: "com.example.VisibleExtension",
+            displayName: "Visible Extension.APP"
+        )
+
+        let scanner = AppScanner(scanRoots: [temporaryDirectory])
+        let apps = try scanner.scanApplications()
+
+        XCTAssertEqual(apps[0].displayName, "Visible Extension")
+    }
+
     func testKeepsRawNameAsSearchAliasAfterUsingLocalizedDisplayName() throws {
         let appURL = try makeApplicationBundle(
             named: "AliasLocalized.app",
