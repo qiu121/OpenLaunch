@@ -585,13 +585,7 @@ private struct AppIconImage: View {
     }
 
     private var icon: NSImage {
-        let resolvedPath = URL(fileURLWithPath: path, isDirectory: true)
-            .standardizedFileURL
-            .resolvingSymlinksInPath()
-            .path
-        let bundleIcon = NSWorkspace.shared.icon(forFile: resolvedPath)
-        bundleIcon.size = NSSize(width: LaunchGridLayoutMetrics.iconSize, height: LaunchGridLayoutMetrics.iconSize)
-        return bundleIcon
+        AppIconProvider.shared.icon(for: path, size: LaunchGridLayoutMetrics.iconSize)
     }
 }
 
