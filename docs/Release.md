@@ -134,6 +134,8 @@ open .build/dist/OpenLaunch-0.1.0-alpha.1.dmg
 - `workflow_dispatch`：手动触发一次开发构建，只上传 artifact，不创建 Release。
 - `schedule`：每周运行一次健康构建，只上传 artifact，不创建 Release。
 
+仓库启用不可变 Release。标签构建使用 GitHub CLI 按“创建草稿、上传全部 DMG/PKG、发布草稿”的顺序完成发布，避免 Release 发布后附件被锁定。带连字符的版本（例如 `v0.1.0-alpha.7`）发布为预发布版本，正式版本由 GitHub 按语义化版本决定 `Latest`。
+
 关键步骤：
 
 ```yaml
@@ -151,6 +153,7 @@ open .build/dist/OpenLaunch-0.1.0-alpha.1.dmg
 - run: bash Tests/PackageVersionTests.sh
 - run: bash scripts/package-dmg.sh
 - run: bash scripts/package-pkg.sh
+- run: gh release create "$GITHUB_REF_NAME" .build/dist/OpenLaunch-*.dmg .build/dist/OpenLaunch-*.pkg --verify-tag --generate-notes
 ```
 
 Release 发布只在 tag 构建中执行：

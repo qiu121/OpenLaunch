@@ -63,10 +63,22 @@ jobs:
 
       - name: Publish GitHub Release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v3
-        with:
-          files: |
-            .build/dist/OpenLaunch-*.dmg
-            .build/dist/OpenLaunch-*.pkg
-          generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          release_options=(
+            --verify-tag
+            --generate-notes
+            --title "OpenLaunch ${GITHUB_REF_NAME}"
+          )
+
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            release_options+=(--prerelease --latest=false)
+          fi
+
+          gh release create "$GITHUB_REF_NAME" \
+            .build/dist/OpenLaunch-*.dmg \
+            .build/dist/OpenLaunch-*.pkg \
+            "${release_options[@]}"
