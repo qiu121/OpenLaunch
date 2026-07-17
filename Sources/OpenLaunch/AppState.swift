@@ -2,12 +2,6 @@ import AppKit
 import Foundation
 import OpenLaunchCore
 
-/// 页面切换方向，用于让不同输入方式共享一致的横向过渡动画。
-enum PageTurnDirection {
-    case backward
-    case forward
-}
-
 /// 应用刷新来源，用于控制是否记录新增应用入场动画。
 enum AppListRefreshAnimationSource {
     case none
@@ -25,8 +19,6 @@ final class AppState: ObservableObject {
     @Published var errorMessage: String?
     @Published var currentPage = 0
     @Published var backgroundImage: NSImage?
-    @Published var pageTurnDirection: PageTurnDirection = .forward
-    @Published var scrollPageTranslation: CGFloat = 0
     @Published private(set) var pendingAnimatedAppIDs: Set<String> = []
     @Published private(set) var presentingAnimatedAppIDs: Set<String> = []
 
@@ -309,7 +301,6 @@ final class AppState: ObservableObject {
             return
         }
 
-        pageTurnDirection = .forward
         currentPage = nextPage
     }
 
@@ -319,7 +310,6 @@ final class AppState: ObservableObject {
             return
         }
 
-        pageTurnDirection = .backward
         currentPage = previousPage
     }
 
@@ -330,7 +320,6 @@ final class AppState: ObservableObject {
             return
         }
 
-        pageTurnDirection = targetPage > currentPage ? .forward : .backward
         currentPage = targetPage
     }
 

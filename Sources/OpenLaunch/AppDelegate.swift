@@ -11,7 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var hotkeyManager: HotkeyManager?
     private var escapeHotkeyManager: HotkeyManager?
     private var keyboardMonitor: Any?
-    private var scrollMonitor: Any?
     private var applicationDirectoryMonitor: ApplicationDirectoryMonitor?
     private var workspaceActivationObserver: NSObjectProtocol?
     private var launcherDidHideObserver: NSObjectProtocol?
@@ -19,10 +18,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let menuBarTriggerShield = MenuBarTriggerShield()
     private let state = AppState()
     private var launchWindow: NSWindow?
-    private var lastScrollPageTurn = 0.0
-    private var isScrollPagingGestureActive = false
-    private var scrollPageVerticalTranslation: CGFloat = 0
-    private var scrollPagingFinishTask: Task<Void, Never>?
     private var lastStatusItemActionTimestamp = 0.0
     private var statusMenuWasPresentedFromVisibleLauncher = false
     private var restoreLauncherInputTask: Task<Void, Never>?
@@ -35,7 +30,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configureStatusItem()
         configureHotkey()
         configureKeyboardMonitor()
-        configureScrollMonitor()
         configureApplicationDirectoryMonitor()
         configureWorkspaceActivationObserver()
         configureLauncherVisibilityObserver()
@@ -46,9 +40,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let keyboardMonitor {
             NSEvent.removeMonitor(keyboardMonitor)
         }
-        if let scrollMonitor {
-            NSEvent.removeMonitor(scrollMonitor)
-        }
         if let workspaceActivationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceActivationObserver)
         }
@@ -56,7 +47,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NotificationCenter.default.removeObserver(launcherDidHideObserver)
         }
         applicationDirectoryMonitor?.stop()
-        scrollPagingFinishTask?.cancel()
         restoreLauncherInputTask?.cancel()
         initialLaunchPresentationWorkItem?.cancel()
         deferredSearchBlurTask?.cancel()
@@ -221,7 +211,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        resetScrollPagingGesture()
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(nil)
@@ -268,16 +257,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
 
             return self.handleKeyDown(event)
-        }
-    }
-
-    private func configureScrollMonitor() {
-        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            guard let self else {
-                return event
-            }
-
-            return self.handleScrollWheel(event)
         }
     }
 
@@ -481,92 +460,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return firstResponder is OpenLaunchSearchField || firstResponder is NSTextView
     }
 
-    private func handleScrollWheel(_ event: NSEvent) -> NSEvent? {
-        guard let window = openLaunchWindow,
-              window.isVisible,
-              state.settings.displayMode == .paged else {
-            resetScrollPagingGesture()
-            return event
-        }
-
-        if event.momentumPhase != [] {
-            return nil
-        }
-
-        let horizontalIntent = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
-        guard horizontalIntent || isScrollPagingGestureActive else {
-            return event
-        }
-
-        updateScrollPagingGesture(with: event)
-        return nil
-    }
-
-    private func updateScrollPagingGesture(with event: NSEvent) {
-        if event.phase.contains(.began) || !isScrollPagingGestureActive {
-            beginScrollPagingGesture()
-        }
-
-        scrollPagingFinishTask?.cancel()
-        state.scrollPageTranslation += event.scrollingDeltaX
-        scrollPageVerticalTranslation += event.scrollingDeltaY
-
-        if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
-            finishScrollPagingGesture()
-            return
-        }
-
-        scrollPagingFinishTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: LaunchGridLayoutMetrics.scrollPagingIdleFinishDelayNanoseconds)
-            self?.finishScrollPagingGesture()
-        }
-    }
-
-    private func beginScrollPagingGesture() {
-        isScrollPagingGestureActive = true
-        scrollPageVerticalTranslation = 0
-        state.scrollPageTranslation = 0
-    }
-
-    private func finishScrollPagingGesture() {
-        guard isScrollPagingGestureActive else {
-            return
-        }
-
-        let currentPage = state.currentPage
-        let targetPage = PageCarouselLayout.snapTargetPage(
-            currentPage: currentPage,
-            pageWidth: openLaunchWindow?.contentView?.bounds.width ?? openLaunchWindow?.frame.width ?? 1,
-            translation: state.scrollPageTranslation,
-            predictedTranslation: state.scrollPageTranslation,
-            verticalTranslation: scrollPageVerticalTranslation,
-            pageCount: state.pageCount
-        )
-        let now = ProcessInfo.processInfo.systemUptime
-        let canTurnPage = now - lastScrollPageTurn > 0.18
-
-        withAnimation(pageTurnAnimation) {
-            if canTurnPage, targetPage != currentPage {
-                state.goToPage(targetPage)
-                lastScrollPageTurn = now
-            }
-
-            state.scrollPageTranslation = 0
-        }
-
-        isScrollPagingGestureActive = false
-        scrollPageVerticalTranslation = 0
-    }
-
     @objc private func toggleOpenLaunch() {
         cancelInitialLaunchPresentation()
         guard let window = openLaunchWindow else {
             showOpenLaunch()
             return
-        }
-
-        if isLauncherWindowVisible(window) {
-            resetScrollPagingGesture()
         }
 
         launchWindowController.toggle(window)
@@ -632,7 +530,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSApp.setActivationPolicy(.regular)
         }
 
-        resetScrollPagingGesture()
         applySearchSessionActions(for: .willShow)
         state.refreshApplicationsIfNeededForPresentation()
         state.backgroundImage = launchWindowController.captureBackgroundImage(for: window)
@@ -690,20 +587,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        resetScrollPagingGesture()
         OpenLaunchWindowActions.hide()
     }
 
     private func isLauncherWindowVisible(_ window: NSWindow) -> Bool {
         window.isVisible && window.alphaValue > 0.02
-    }
-
-    private func resetScrollPagingGesture() {
-        scrollPagingFinishTask?.cancel()
-        scrollPagingFinishTask = nil
-        isScrollPagingGestureActive = false
-        scrollPageVerticalTranslation = 0
-        state.scrollPageTranslation = 0
     }
 
     private func suppressExternalActivationDuringPresentation() {
@@ -723,14 +611,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if LauncherChromePolicy.hidesStatusItemWhileLauncherVisible {
             statusItem?.isVisible = true
         }
-    }
-
-    private var pageTurnAnimation: Animation {
-        .interactiveSpring(
-            response: Double(LaunchGridLayoutMetrics.pageTurnAnimationDuration),
-            dampingFraction: 0.86,
-            blendDuration: 0.05
-        )
     }
 
     private var openLaunchWindow: NSWindow? {

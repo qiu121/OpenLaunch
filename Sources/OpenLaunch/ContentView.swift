@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 /// OpenLaunch 主窗口，展示搜索、排序控制和应用网格。
 struct ContentView: View {
     @ObservedObject var state: AppState
-    @State private var pageDragTranslation: CGFloat = 0
+    @StateObject private var interactivePagingProxy = InteractivePagingProxy()
     @State private var draggingAppID: String?
     @State private var dropTargetAppID: String?
     @State private var enteringAnimatedAppIDs: Set<String> = []
@@ -59,6 +59,9 @@ struct ContentView: View {
         }
         .onChange(of: state.presentingAnimatedAppIDs) { _, appIDs in
             playAppEntryAnimation(for: appIDs)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openLaunchDidHide)) { _ in
+            interactivePagingProxy.resetAfterLauncherHides()
         }
         .onExitCommand {
             OpenLaunchWindowActions.hide()
@@ -168,36 +171,34 @@ struct ContentView: View {
     private var pagedGrid: some View {
         GeometryReader { proxy in
             let pageWidth = proxy.size.width
-            let pageCount = state.pageCount
-            let activePageTranslation = pageDragTranslation != 0
-                ? pageDragTranslation
-                : state.scrollPageTranslation
-            let trackOffset = PageCarouselLayout.offset(
+            let visibleApps = state.visibleApps
+            let pageSize = max(state.pageSize, 1)
+            let pageCount = max(Int(ceil(Double(visibleApps.count) / Double(pageSize))), 1)
+            let pageSpacing = LaunchGridLayoutMetrics.pageSpacing
+            let trackWidth = pageWidth * CGFloat(pageCount)
+                + pageSpacing * CGFloat(max(pageCount - 1, 0))
+
+            InteractivePagedGrid(
                 currentPage: state.currentPage,
-                pageWidth: pageWidth,
-                dragTranslation: activePageTranslation,
-                pageCount: pageCount
-            )
-
-            ZStack(alignment: .topLeading) {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        OpenLaunchWindowActions.hide()
-                    }
-
+                pageCount: pageCount,
+                pageSpacing: pageSpacing,
+                proxy: interactivePagingProxy,
+                onPageChanged: state.goToPage
+            ) {
                 HStack(alignment: .top, spacing: 0) {
                     ForEach(0..<pageCount, id: \.self) { page in
-                        pagedGridLayer(apps: appsForPage(page), in: proxy.size)
+                        pagedGridLayer(
+                            apps: appsForPage(page, visibleApps: visibleApps, pageSize: pageSize),
+                            in: proxy.size
+                        )
                             .frame(width: pageWidth, height: proxy.size.height, alignment: .topLeading)
+                            .padding(.trailing, page == pageCount - 1 ? 0 : pageSpacing)
                     }
                 }
-                .frame(width: pageWidth * CGFloat(pageCount), height: proxy.size.height, alignment: .leading)
-                .offset(x: trackOffset)
-                .animation(pageTurnAnimation, value: state.currentPage)
+                .frame(width: trackWidth, height: proxy.size.height, alignment: .leading)
             }
             .clipped()
-            .simultaneousGesture(horizontalPagingGesture(pageWidth: pageWidth))
+            .simultaneousGesture(horizontalPagingGesture)
         }
     }
 
@@ -217,15 +218,18 @@ struct ContentView: View {
         .frame(width: size.width, height: size.height, alignment: .topLeading)
     }
 
-    private func appsForPage(_ page: Int) -> [LaunchableApp] {
-        let apps = state.visibleApps
-        let start = page * state.pageSize
-        guard start < apps.count else {
+    private func appsForPage(
+        _ page: Int,
+        visibleApps: [LaunchableApp],
+        pageSize: Int
+    ) -> [LaunchableApp] {
+        let start = page * pageSize
+        guard start < visibleApps.count else {
             return []
         }
 
-        let end = min(start + state.pageSize, apps.count)
-        return Array(apps[start..<end])
+        let end = min(start + pageSize, visibleApps.count)
+        return Array(visibleApps[start..<end])
     }
 
     private var pageTurnAnimation: Animation {
@@ -305,54 +309,31 @@ struct ContentView: View {
         )
     }
 
-    private func horizontalPagingGesture(pageWidth: CGFloat) -> some Gesture {
+    private var horizontalPagingGesture: some Gesture {
         DragGesture(minimumDistance: LaunchGridLayoutMetrics.pageGestureMinimumDistance)
             .onChanged { value in
                 guard state.settings.displayMode == .paged,
+                      draggingAppID == nil,
                       isHorizontalDrag(value.translation) else {
                     return
                 }
 
-                updatePageDragTranslation(value.translation.width)
+                interactivePagingProxy.updatePointerGesture(translation: value.translation)
             }
             .onEnded { value in
-                guard state.settings.displayMode == .paged else {
-                    resetPageDragTranslation()
+                guard state.settings.displayMode == .paged,
+                      draggingAppID == nil,
+                      isHorizontalDrag(value.translation) else {
+                    interactivePagingProxy.cancelPointerGesture()
                     return
                 }
 
-                let targetPage = PageCarouselLayout.snapTargetPage(
-                    currentPage: state.currentPage,
-                    pageWidth: pageWidth,
-                    translation: value.translation.width,
-                    predictedTranslation: value.predictedEndTranslation.width,
-                    verticalTranslation: value.translation.height,
-                    pageCount: state.pageCount
-                )
-
-                withPageAnimation {
-                    state.goToPage(targetPage)
-                    pageDragTranslation = 0
-                }
+                interactivePagingProxy.endPointerGesture(translation: value.translation)
             }
     }
 
     private func isHorizontalDrag(_ translation: CGSize) -> Bool {
         abs(translation.width) > abs(translation.height) * 1.15
-    }
-
-    private func updatePageDragTranslation(_ translation: CGFloat) {
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            pageDragTranslation = translation
-        }
-    }
-
-    private func resetPageDragTranslation() {
-        withPageAnimation {
-            pageDragTranslation = 0
-        }
     }
 
     private func appTile(for app: LaunchableApp) -> some View {
