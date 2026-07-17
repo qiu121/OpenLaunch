@@ -79,4 +79,29 @@ final class SettingsStoreTests: XCTestCase {
 
         XCTAssertEqual(loaded, recents)
     }
+
+    func testMissingAdditionDateCatalogReturnsUninitializedCatalog() throws {
+        let store = SettingsStore(applicationSupportDirectory: temporaryDirectory)
+
+        let catalog = try store.loadAppAdditionDateCatalog()
+
+        XCTAssertFalse(catalog.isInitialized)
+        XCTAssertTrue(catalog.dates.isEmpty)
+    }
+
+    func testAdditionDateCatalogRoundTrip() throws {
+        let store = SettingsStore(applicationSupportDirectory: temporaryDirectory)
+        let expected = AppAdditionDateCatalog(
+            dates: [
+                "com.example.one": Date(timeIntervalSince1970: 100),
+                "com.example.two": Date(timeIntervalSince1970: 200)
+            ],
+            isInitialized: true
+        )
+
+        try store.saveAppAdditionDateCatalog(expected)
+        let loaded = try store.loadAppAdditionDateCatalog()
+
+        XCTAssertEqual(loaded, expected)
+    }
 }

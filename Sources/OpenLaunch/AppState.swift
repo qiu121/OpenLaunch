@@ -33,6 +33,7 @@ final class AppState: ObservableObject {
     private let scanner: AppScanner
     private let store: SettingsStore
     private var recentOpenDates: [String: Date]
+    private var appAdditionDateCatalog: AppAdditionDateCatalog
     private var applicationRefreshPolicy = ApplicationRefreshPolicy()
     private var appListAnimationState = AppListAnimationState()
 
@@ -42,6 +43,7 @@ final class AppState: ObservableObject {
         self.store = store
         self.settings = (try? store.loadSettings()) ?? .default
         self.recentOpenDates = (try? store.loadRecentOpenDates()) ?? [:]
+        self.appAdditionDateCatalog = (try? store.loadAppAdditionDateCatalog()) ?? .uninitialized
     }
 
     /// 按当前设置排序后的完整应用列表。
@@ -99,10 +101,11 @@ final class AppState: ObservableObject {
                     }
                 }.value
 
-                apps = scannedApps
+                let resolvedApps = resolveAdditionDates(for: scannedApps, detectedAt: Date())
+                apps = resolvedApps
                 updatePendingAnimationIDs(
                     previousApps: previousApps,
-                    currentApps: scannedApps,
+                    currentApps: resolvedApps,
                     animationSource: animationSource
                 )
                 currentPage = min(currentPage, pageCount - 1)
@@ -182,6 +185,29 @@ final class AppState: ObservableObject {
         }
 
         pendingAnimatedAppIDs = appListAnimationState.pendingAnimatedAppIDs
+    }
+
+    private func resolveAdditionDates(
+        for scannedApps: [LaunchableApp],
+        detectedAt: Date
+    ) -> [LaunchableApp] {
+        let previousCatalog = appAdditionDateCatalog
+        let resolvedApps = appAdditionDateCatalog.resolveAdditionDates(
+            for: scannedApps,
+            detectedAt: detectedAt
+        )
+
+        guard appAdditionDateCatalog != previousCatalog else {
+            return resolvedApps
+        }
+
+        do {
+            try store.saveAppAdditionDateCatalog(appAdditionDateCatalog)
+        } catch {
+            errorMessage = "无法保存应用添加时间：\(error.localizedDescription)"
+        }
+
+        return resolvedApps
     }
 
     private func focusPageContainingFirstAnimatedApp(in appIDs: Set<String>) {

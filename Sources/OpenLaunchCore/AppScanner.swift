@@ -72,7 +72,7 @@ public struct AppScanner {
             metadata: metadata
         )
         let modifiedDate = metadata.modifiedDate
-        let addedDate = metadata.spotlightDateAdded ?? metadata.creationDate ?? metadata.modifiedDate
+        let addedDate = metadata.resolvedAddedDate
 
         return LaunchableApp(
             bundleIdentifier: bundleIdentifier,
@@ -431,6 +431,15 @@ public struct AppFileMetadata: Equatable, Sendable {
         self.spotlightDateAdded = spotlightDateAdded
         self.creationDate = creationDate
         self.modifiedDate = modifiedDate
+    }
+
+    /// 返回可信的添加时间；Spotlight 日期早于文件创建日期时视为异常并使用创建日期。
+    public var resolvedAddedDate: Date? {
+        if let spotlightDateAdded, let creationDate, spotlightDateAdded < creationDate {
+            return creationDate
+        }
+
+        return spotlightDateAdded ?? creationDate ?? modifiedDate
     }
 }
 

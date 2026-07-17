@@ -17,7 +17,7 @@ public struct LaunchableApp: Identifiable, Codable, Equatable, Hashable, Sendabl
     /// Launch Services 分类，例如生产力、开发者工具等。
     public var category: String?
 
-    /// 应用被系统记录的添加时间；无法读取时使用创建时间或修改时间降级。
+    /// 用于排序的稳定添加时间；首次建档后由 OpenLaunch 持久化维护。
     public var addedDate: Date?
 
     /// `.app` bundle 的文件修改时间。

@@ -159,6 +159,28 @@ final class AppScannerTests: XCTestCase {
         XCTAssertEqual(apps[0].addedDate, spotlightDate)
     }
 
+    func testRejectsSpotlightDateAddedEarlierThanFileCreationDate() throws {
+        try makeApplicationBundle(
+            named: "InvalidSpotlightDate.app",
+            bundleIdentifier: "com.example.InvalidSpotlightDate",
+            displayName: "Invalid Spotlight Date"
+        )
+        let spotlightDate = Date(timeIntervalSince1970: 100)
+        let creationDate = Date(timeIntervalSince1970: 500)
+        let metadataProvider = StubMetadataProvider(
+            defaultMetadata: AppFileMetadata(
+                spotlightDateAdded: spotlightDate,
+                creationDate: creationDate,
+                modifiedDate: Date(timeIntervalSince1970: 700)
+            )
+        )
+
+        let scanner = AppScanner(scanRoots: [temporaryDirectory], metadataProvider: metadataProvider)
+        let apps = try scanner.scanApplications()
+
+        XCTAssertEqual(apps[0].addedDate, creationDate)
+    }
+
     func testDefaultScanRootsIncludeCoreServicesApplications() {
         let coreServicesApplications = URL(fileURLWithPath: "/System/Library/CoreServices/Applications", isDirectory: true)
         let cryptexApplications = URL(fileURLWithPath: "/System/Cryptexes/App/System/Applications", isDirectory: true)

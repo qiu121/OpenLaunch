@@ -8,7 +8,9 @@ public enum AppSorter {
 
         let sortedApps = switch settings.sortMode {
         case .addedDate:
-            visibleApps.sorted(by: compareByAddedDate)
+            visibleApps.sorted {
+                compareByAddedDate($0, $1, direction: settings.sortDirection)
+            }
         case .name:
             visibleApps.sorted(by: compareByName)
         case .lastOpened:
@@ -31,17 +33,23 @@ public enum AppSorter {
             }
         }
 
-        guard settings.sortMode != .custom, settings.sortDirection == .reverse else {
+        guard settings.sortMode != .custom,
+              settings.sortMode != .addedDate,
+              settings.sortDirection == .reverse else {
             return sortedApps
         }
 
         return sortedApps.reversed()
     }
 
-    private static func compareByAddedDate(_ lhs: LaunchableApp, _ rhs: LaunchableApp) -> Bool {
+    private static func compareByAddedDate(
+        _ lhs: LaunchableApp,
+        _ rhs: LaunchableApp,
+        direction: AppSortDirection
+    ) -> Bool {
         switch (lhs.addedDate, rhs.addedDate) {
         case let (left?, right?) where left != right:
-            return left < right
+            return direction == .forward ? left < right : left > right
         case (_?, nil):
             return true
         case (nil, _?):

@@ -54,6 +54,48 @@ final class AppSorterTests: XCTestCase {
         XCTAssertEqual(sorted.map(\.displayName), ["New", "Middle", "Old"])
     }
 
+    func testNewestFirstAddedDateSortKeepsUnknownDatesLast() {
+        let knownDate = Date(timeIntervalSince1970: 100)
+        let apps = [
+            LaunchableApp(bundleIdentifier: "com.example.unknown", path: "/Applications/Unknown.app", displayName: "Unknown", addedDate: nil),
+            LaunchableApp(bundleIdentifier: "com.example.known", path: "/Applications/Known.app", displayName: "Known", addedDate: knownDate)
+        ]
+        let settings = OpenLaunchSettings(
+            sortMode: .addedDate,
+            sortDirection: .reverse,
+            displayMode: .paged,
+            gridDensity: .medium,
+            showLabels: true,
+            hotkey: nil
+        )
+
+        let sorted = AppSorter.sorted(apps, using: settings)
+
+        XCTAssertEqual(sorted.map(\.displayName), ["Known", "Unknown"])
+    }
+
+    func testAddedDateTiesKeepNameOrderInBothDirections() {
+        let sameDate = Date(timeIntervalSince1970: 100)
+        let apps = [
+            LaunchableApp(bundleIdentifier: "com.example.zed", path: "/Applications/Zed.app", displayName: "Zed", addedDate: sameDate),
+            LaunchableApp(bundleIdentifier: "com.example.arc", path: "/Applications/Arc.app", displayName: "Arc", addedDate: sameDate)
+        ]
+        let reverseSettings = OpenLaunchSettings(
+            sortMode: .addedDate,
+            sortDirection: .reverse,
+            displayMode: .paged,
+            gridDensity: .medium,
+            showLabels: true,
+            hotkey: nil
+        )
+
+        let forward = AppSorter.sorted(apps, using: .default)
+        let reverse = AppSorter.sorted(apps, using: reverseSettings)
+
+        XCTAssertEqual(forward.map(\.displayName), ["Arc", "Zed"])
+        XCTAssertEqual(reverse.map(\.displayName), ["Arc", "Zed"])
+    }
+
     func testNameSortCanUseReverseDirection() {
         let apps = [
             LaunchableApp(bundleIdentifier: "com.example.safari", path: "/Applications/Safari.app", displayName: "Safari", addedDate: nil),

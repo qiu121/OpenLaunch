@@ -13,6 +13,10 @@ public struct SettingsStore {
         applicationSupportDirectory.appendingPathComponent("recent.json")
     }
 
+    private var appAdditionsURL: URL {
+        applicationSupportDirectory.appendingPathComponent("app-additions.json")
+    }
+
     private var encoder: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -62,6 +66,23 @@ public struct SettingsStore {
         try ensureDirectoryExists()
         let data = try encoder.encode(dates)
         try data.write(to: recentsURL, options: .atomic)
+    }
+
+    /// 读取应用添加时间目录；文件不存在时返回尚未初始化的空目录。
+    public func loadAppAdditionDateCatalog() throws -> AppAdditionDateCatalog {
+        guard FileManager.default.fileExists(atPath: appAdditionsURL.path) else {
+            return .uninitialized
+        }
+
+        let data = try Data(contentsOf: appAdditionsURL)
+        return try decoder.decode(AppAdditionDateCatalog.self, from: data)
+    }
+
+    /// 保存稳定的应用添加时间目录。
+    public func saveAppAdditionDateCatalog(_ catalog: AppAdditionDateCatalog) throws {
+        try ensureDirectoryExists()
+        let data = try encoder.encode(catalog)
+        try data.write(to: appAdditionsURL, options: .atomic)
     }
 
     private func ensureDirectoryExists() throws {
