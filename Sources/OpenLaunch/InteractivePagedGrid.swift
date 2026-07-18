@@ -51,7 +51,7 @@ final class InteractivePagingProxy: ObservableObject {
     }
 }
 
-/// 使用 AppKit 宿主承载 SwiftUI 页面，并让 Core Animation 直接移动整条页面轨道。
+/// 使用 AppKit 宿主承载 SwiftUI 页面，并通过可命中测试的坐标滚动整条页面轨道。
 struct InteractivePagedGrid<Content: View>: NSViewRepresentable {
     let currentPage: Int
     let pageCount: Int
@@ -517,7 +517,7 @@ final class InteractivePagingHostView: NSView, InteractivePagingTarget {
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        hostingView.layer?.transform = CATransform3DMakeTranslation(offset, 0, 0)
+        hostingView.setBoundsOrigin(NSPoint(x: -offset, y: 0))
         CATransaction.commit()
     }
 
